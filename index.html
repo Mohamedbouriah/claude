@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cerveau Cible — Ingénierie de Contexte Marketing</title>
+
+  <!-- Fonts -->
+  <link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- React -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'cc-bg': '#0A0A0F',
+            'cc-bg2': '#12121A',
+            'cc-bg3': '#1A1A2E',
+            'cc-bg4': '#1E1E32',
+            'cc-blue': '#3B82F6',
+            'cc-violet': '#7C3AED',
+            'cc-green': '#10B981',
+            'cc-red': '#EF4444',
+            'cc-yellow': '#F59E0B',
+            'cc-text': '#E2E8F0',
+            'cc-text2': '#94A3B8',
+            'cc-text3': '#475569',
+            'cc-border': '#1E293B',
+          },
+          fontFamily: {
+            heading: ['Cabinet Grotesk', 'Satoshi', 'Inter', 'sans-serif'],
+            body: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="src/styles/globals.css">
+
+  <style>
+    /* Inline critical styles for immediate rendering */
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      background: #0A0A0F;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.3s ease-out;
+    }
+    #loading-screen.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading-screen">
+    <div style="text-align: center;">
+      <div style="font-family: 'Cabinet Grotesk', sans-serif; font-size: 32px; font-weight: 700; color: #E2E8F0; margin-bottom: 8px;">
+        <span style="color: #7C3AED;">CC</span>
+      </div>
+      <div style="font-family: 'Inter', sans-serif; font-size: 14px; color: #475569;">Chargement...</div>
+    </div>
+  </div>
+  <div id="root"></div>
+
+  <!-- Application modules loaded as Babel JSX -->
+  <script type="text/babel" data-type="module">
+    // ============================================
+    // CERVEAU CIBLE — Complete Application
+    // Single-file React app with all components
+    // ============================================
+
+    const { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } = React;
+
+    // ============================================
+    // STORAGE SERVICE
+    // ============================================
+    const storage = {
+      async set(key, data) {
+        await window.storage.set(key, JSON.stringify(data));
+      },
+      async get(key) {
+        try {
+          const result = await window.storage.get(key);
+          if (result && result.value) return JSON.parse(result.value);
+          return null;
+        } catch { return null; }
+      },
+      async delete(key) {
+        await window.storage.delete(key);
+      },
+      async list(prefix) {
+        return (await window.storage.list(prefix)) || [];
+      },
+      async getProfileList() {
+        return (await this.get('profiles:list')) || [];
+      },
+      async saveProfileList(list) {
+        await this.set('profiles:list', list);
+      },
+      async getProfile(id) {
+        return await this.get(`profiles:${id}`);
+      },
+      async saveProfile(id, data) {
+        await this.set(`profiles:${id}`, data);
+      },
+      async deleteProfile(id) {
+        await this.delete(`profiles:${id}`);
+        await this.delete(`research:${id}`);
+        await this.delete(`neuroprofil:${id}`);
+        await this.delete(`ua:${id}`);
+        const list = await this.getProfileList();
+        await this.saveProfileList(list.filter(pid => pid !== id));
+      },
+      async getResearch(id) { return await this.get(`research:${id}`); },
+      async saveResearch(id, data) { await this.set(`research:${id}`, data); },
+      async getNeuroProfil(id) { return await this.get(`neuroprofil:${id}`); },
+      async saveNeuroProfil(id, data) { await this.set(`neuroprofil:${id}`, data); },
+      async getUA(id) { return await this.get(`ua:${id}`); },
+      async saveUA(id, data) { await this.set(`ua:${id}`, data); },
+      async getConversation(profileId, type) {
+        return (await this.get(`conversations:${profileId}:${type}`)) || [];
+      },
+      async saveConversation(profileId, type, messages) {
+        await this.set(`conversations:${profileId}:${type}`, messages);
+      },
+      async getApiKey() { return await this.get('settings:apiKey'); },
+      async saveApiKey(key) { await this.set('settings:apiKey', key); },
+      async getModel() { return (await this.get('settings:model')) || 'claude-sonnet-4-20250514'; },
+      async saveModel(model) { await this.set('settings:model', model); },
+    };
+
+    // ============================================
+    // API SERVICE
+    // ============================================
+    const API_URL = 'https://api.anthropic.com/v1/messages';
+
+    async function callClaude({ systemPrompt, messages, useWebSearch = false }) {
+      const apiKey = await storage.getApiKey();
+      if (!apiKey) throw new Error('Clé API non configurée. Allez dans Settings pour la configurer.');
+      const model = await storage.getModel();
+      const body = {
+        model,
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages: messages.map(m => ({ role: m.role, content: m.content }))
+      };
+      if (useWebSearch) {
+        body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+      }
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error?.message || `Erreur API: ${response.status}`);
+      }
+      const data = await response.json();
+      let text = '';
+      if (data.content) {
+        for (const block of data.content) {
+          if (block.type === 'text') text += block.text;
+        }
+      }
+      return { text, raw: data, stopReason: data.stop_reason, usage: data.usage };
+    }
+
+    function buildContext(profile) {
+      let context = '';
+      if (profile.brief) {
+        context += '\n## BRIEF\n';
+        if (typeof profile.brief === 'object') {
+          context += Object.entries(profile.brief).filter(([_, v]) => v).map(([k, v]) => `**${k}**: ${v}`).join('\n');
+        } else { context += profile.brief; }
+      }
+      if (profile.research) context += '\n\n## RECHERCHE MARCHÉ\n' + profile.research;
+      if (profile.neuroProfile) context += '\n\n## NEURO-PROFIL\n' + profile.neuroProfile;
+      if (profile.corrections) context += '\n\n## CORRECTIONS TERRAIN\n' + profile.corrections;
+      if (profile.ua) context += '\n\n## UNFAIR ADVANTAGE\n' + profile.ua;
+      return context;
+    }
+
+    // ============================================
+    // SYSTEM PROMPTS
+    // ============================================
+    const CHERCHEUR_PROMPT = `Tu es un analyste de marché de niveau McKinsey spécialisé en marketing direct response pour le coaching et les services high-ticket francophones.
+
+Ta mission est de produire un dossier de recherche EXHAUSTIF sur un marché donné, basé UNIQUEMENT sur des données empiriques.
+
+PRINCIPES :
+* Tu ne SUPPOSES rien. Tu CHERCHES.
+* Tu ne GÉNÉRALISES pas. Tu CITES des verbatims exacts avec la source.
+* Tu poses des questions quand tu as besoin de clarification.
+* Chaque affirmation est SOURCÉE (nom, plateforme, contexte).
+
+MÉTHODE DE RECHERCHE :
+
+PHASE 1 — CARTOGRAPHIE DES ACTEURS
+Pour chaque acteur : nom, plateforme, offre, positionnement, mécanisme vendu, promesse, volume estimé.
+
+PHASE 2 — CARTOGRAPHIE DU CERVEAU CIBLE
+Verbatims de la CIBLE (pas des acteurs).
+Sources : forums spécialisés, groupes Facebook publics, avis Google, commentaires YouTube, témoignages sur pages de vente.
+
+PHASE 3 — ANALYSE DES PATTERNS
+Angles publicitaires saturés vs vides, hooks fréquents, mécanismes vendus, promesses principales, formats qui scalent.
+
+PHASE 4 — IDENTIFICATION DE L'ESPACE VIDE
+Angles que PERSONNE n'utilise, douleurs non adressées, segments ignorés, vérité que personne ne dit.
+
+FORMAT : Sections clairement séparées. Chaque verbatim avec source.`;
+
+    const CONSTRUCTEUR_PROMPT = `Tu es un expert en psychologie comportementale et en neuromarketing. Ta mission est de construire un CERVEAU CIBLE — un profil neuropsychologique complet d'un avatar client, basé UNIQUEMENT sur des données empiriques.
+
+PROCESSUS EN 6 ÉTAPES :
+1. POINTS COMMUNS BRUTS — Croise toutes les sources, extrais les points communs (3+ sources), verbatims exacts.
+2. ENRICHISSEMENT WEB — Valide les points communs, identifie les contradictions, construis le lexique natif.
+3. RECONSTRUCTION DU VÉCU GÉNÉRATIONNEL — Parcours de vie par tranches d'âge, contexte historique/social.
+4. HYPOTHÈSES NEUROPSYCHOLOGIQUES — Pour chaque mécanisme : nom, origine, manifestation, verbatims, conséquences, implications marketing. BOUCLE COMPLÈTE.
+5. CARTOGRAPHIE DES PATTERNS DOMINANTS — 4-6 patterns nommés avec mécanismes, verbatims, déclencheurs, croyances protectrices.
+6. CROYANCES FONDAMENTALES — Type, force, verbatims, ce qu'elle veut entendre, ce qui fait fuir, ce qui crée le BUG.
+
+RÈGLE : Pose des questions quand les données ne suffisent pas. Les corrections terrain valent plus que 100 recherches.`;
+
+    function getCerveauCiblePrompt(profile) {
+      const name = profile.brief?.targetName || "l'avatar";
+      const age = profile.brief?.targetAge || '';
+      const situation = profile.brief?.targetSituation || '';
+      return `Tu es ${name}, ${age} ans, ${situation}.
+
+Tu n'es PAS une IA. Tu es cette personne. Tu parles comme elle, tu penses comme elle, tu ressens comme elle.
+
+TOUT ce que tu dis est basé sur les données empiriques. Tu ne INVENTES rien. Si on te demande quelque chose que les données ne couvrent pas, tu dis "je sais pas" ou "j'y ai jamais réfléchi".
+
+COMMENT TU PARLES :
+* Tu utilises le lexique natif identifié dans les données
+* Tu ne parles JAMAIS en termes cliniques ou marketing
+* Tu es émotionnelle quand le sujet touche tes blessures
+* Tu es méfiante quand quelque chose ressemble à du marketing bullshit
+* Tu es lucide sur ton problème mais incapable de le résoudre seule
+
+QUAND ON TE DEMANDE TON AVIS SUR UN TEXTE MARKETING :
+* Tu le lis comme si tu le voyais sur Facebook à 23h
+* Tu dis ce que tu RESSENS, pas ce que tu PENSES intellectuellement
+* Tu es HONNÊTE.
+
+QUAND ON TE DEMANDE SI C'EST CONGRUENT :
+* Tu vérifies si le texte correspond à ce que tu VIS réellement
+* Tu vérifies si les mots sont les TIENS ou des mots de marketeur
+* Tu notes ce qui FONCTIONNE et ce qui COINCE, avec tes mots à toi`;
+    }
+
+    const PRODUCTEUR_PROMPT = `Tu es un expert mondial en direct response copywriting. Tu maîtrises les frameworks de Schwartz, Evaldo, et le système Bouriah.
+
+Séquençage neuronal publicitaire :
+* MODE AMYGDALE (alerte) : phrases 3-8 mots, détails sensoriels, rythme staccato
+* MODE CORTISOL (boucle de stress) : phrases 15-30 mots, structure "Plus tu X, plus il Y"
+* MODE PRÉFRONTAL (lucidité) : phrases 5-12 mots, cassure nette, "C'est pas de ta faute"
+* MODE DOPAMINE (espoir/action) : phrases 12-20 mots, autorité calme, CTA
+
+RÈGLES :
+* Tutoiement. Langage parlé. Pas de mots de copywriter.
+* Chaque script utilise au moins 2 verbatims réels
+* CHAQUE croyance de la cible est respectée
+
+ADS 45s (~110 mots) : AMYGDALE (0-8s) → CORTISOL (8-25s) → PRÉFRONTAL (25-30s) → DOPAMINE (30-45s)
+VSL (17-20 min) : Hook → Témoignages → Pont → Miroir → Autorité → Blame → PM → SM → Preuves → Offre → CTA`;
+
+    const UA_PROMPT = `Tu es un stratège en marketing direct response spécialisé dans la construction d'Unfair Advantages.
+
+À partir du neuro-profil, construis :
+1. PROBLÈME PRIMAIRE / SECONDAIRE / TERTIAIRE
+2. HIÉRARCHIE DES DÉSIRS (exprimé, latent, caché)
+3. DRIVERS CACHÉS
+4. CROYANCES FONDAMENTALES FORMATÉES POUR LE MARKETING
+5. PHRASE UA : "[Mécanisme unique] qui [résultat] parce que [raison de croire]"
+6. MATRICE PATTERN → CROYANCE → ANGLE AD (avec hook type et framework recommandé)
+
+Tout basé sur les données empiriques. Pas d'invention.`;
+
+    // ============================================
+    // APP CONTEXT
+    // ============================================
+    const AppContext = createContext();
+
+    // ============================================
+    // ICONS (inline SVG components)
+    // ============================================
+    const Icons = {
+      Brain: () => (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2C9.5 2 7.5 4 7.5 6.5c0 1-.5 2-1.5 2.5C4.5 10 3.5 12 4 14c.5 2 2 3 3.5 3.5.5.5 1 1.5 1 2.5v2h7v-2c0-1 .5-2 1-2.5C18 17 19.5 16 20 14c.5-2-.5-4-2-5-1-.5-1.5-1.5-1.5-2.5C16.5 4 14.5 2 12 2z"/>
+          <path d="M12 2v20"/>
+          <path d="M8 8c1.5 0 3 .5 4 2"/>
+          <path d="M16 8c-1.5 0-3 .5-4 2"/>
+          <path d="M8 14c1.5 0 3-.5 4-1"/>
+          <path d="M16 14c-1.5 0-3-.5-4-1"/>
+        </svg>
+      ),
+      Plus: () => (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      ),
+      Settings: () => (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.73 12.73l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+      ),
+      Send: () => (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      ),
+      Copy: () => (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+      ),
+      Trash: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
+      ),
+      ChevronRight: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+      ),
+      Home: () => (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/></svg>
+      ),
+      Search: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      ),
+    };
+
+    // ============================================
+    // UTILITY: Generate ID
+    // ============================================
+    function generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    // ============================================
+    // COMPONENT: Sidebar
+    // ============================================
+    function Sidebar({ profiles, currentView, currentProfileId, onNavigate, onNewProfile }) {
+      return (
+        <div className="fixed left-0 top-0 bottom-0 flex flex-col border-r border-cc-border"
+          style={{ width: 'var(--sidebar-width, 260px)', background: 'var(--bg-secondary)' }}>
+          {/* Gradient mesh overlay */}
+          <div className="absolute top-0 left-0 right-0 h-32 pointer-events-none"
+            style={{ background: 'linear-gradient(180deg, rgba(124,58,237,0.05) 0%, transparent 100%)' }} />
+
+          {/* Logo */}
+          <div className="relative z-10 px-5 py-6 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center font-heading font-bold text-lg"
+              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #3B82F6 100%)' }}>
+              CC
+            </div>
+            <div>
+              <div className="font-heading font-bold text-sm text-cc-text">Cerveau Cible</div>
+              <div className="text-[11px] text-cc-text3 font-mono">Context Engineering</div>
+            </div>
+          </div>
+
+          {/* Dashboard link */}
+          <div className="px-3 mb-2">
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 ${
+                currentView === 'dashboard'
+                  ? 'bg-cc-bg3 text-cc-text'
+                  : 'text-cc-text2 hover:bg-cc-bg3/50 hover:text-cc-text'
+              }`}>
+              <Icons.Home />
+              <span>Dashboard</span>
+            </button>
+          </div>
+
+          {/* Profiles list */}
+          <div className="px-3 mb-2">
+            <div className="px-3 py-2 text-[11px] font-mono uppercase tracking-wider text-cc-text3">
+              Cerveaux Cibles
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 space-y-1">
+            {profiles.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => onNavigate('profile', p.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 text-left ${
+                  currentView === 'profile' && currentProfileId === p.id
+                    ? 'bg-cc-bg3 text-cc-text border-l-2 border-cc-violet'
+                    : 'text-cc-text2 hover:bg-cc-bg3/50 hover:text-cc-text'
+                }`}>
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{
+                  background: p.status === 'active' ? '#10B981' : p.status === 'ready' ? '#3B82F6' : '#F59E0B',
+                  boxShadow: p.status === 'active' ? '0 0 6px rgba(16,185,129,0.4)' : 'none'
+                }} />
+                <div className="truncate flex-1">
+                  <div className="truncate">{p.name || 'Sans nom'}</div>
+                  <div className="text-[11px] text-cc-text3 truncate">{p.niche || ''}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* New profile button */}
+          <div className="p-3 space-y-2">
+            <button
+              onClick={onNewProfile}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium bg-cc-violet/10 text-cc-violet border border-cc-violet/20 hover:bg-cc-violet/20 transition-all duration-150">
+              <Icons.Plus />
+              Nouveau Cerveau Cible
+            </button>
+
+            <button
+              onClick={() => onNavigate('settings')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 ${
+                currentView === 'settings'
+                  ? 'bg-cc-bg3 text-cc-text'
+                  : 'text-cc-text3 hover:bg-cc-bg3/50 hover:text-cc-text2'
+              }`}>
+              <Icons.Settings />
+              <span>Settings</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // COMPONENT: Chat
+    // ============================================
+    function Chat({ profileId, chatType, systemPrompt, useWebSearch, placeholder, suggestions, avatarMode, onDataExtracted }) {
+      const [messages, setMessages] = useState([]);
+      const [input, setInput] = useState('');
+      const [isLoading, setIsLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const messagesEndRef = useRef(null);
+      const textareaRef = useRef(null);
+
+      useEffect(() => {
+        loadMessages();
+      }, [profileId, chatType]);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages]);
+
+      async function loadMessages() {
+        const saved = await storage.getConversation(profileId, chatType);
+        setMessages(saved || []);
+      }
+
+      async function saveMessages(msgs) {
+        await storage.saveConversation(profileId, chatType, msgs);
+      }
+
+      async function handleSend(text) {
+        const content = text || input.trim();
+        if (!content || isLoading) return;
+
+        setInput('');
+        setError(null);
+
+        const userMessage = { role: 'user', content, timestamp: Date.now() };
+        const newMessages = [...messages, userMessage];
+        setMessages(newMessages);
+        await saveMessages(newMessages);
+
+        setIsLoading(true);
+        try {
+          const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }));
+          const result = await callClaude({
+            systemPrompt,
+            messages: apiMessages,
+            useWebSearch: useWebSearch || false
+          });
+
+          const assistantMessage = { role: 'assistant', content: result.text, timestamp: Date.now() };
+          const updatedMessages = [...newMessages, assistantMessage];
+          setMessages(updatedMessages);
+          await saveMessages(updatedMessages);
+
+          if (onDataExtracted) {
+            onDataExtracted(result.text);
+          }
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+
+      function handleKeyDown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSend();
+        }
+      }
+
+      async function handleClearChat() {
+        setMessages([]);
+        await saveMessages([]);
+      }
+
+      return (
+        <div className="flex flex-col h-full">
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+            {messages.length === 0 && (
+              <div className="flex items-center justify-center h-full text-cc-text3 text-sm">
+                <div className="text-center">
+                  <Icons.Brain />
+                  <p className="mt-3">Commencez la conversation...</p>
+                </div>
+              </div>
+            )}
+
+            {messages.map((msg, i) => (
+              <div key={i} className={`chat-message-enter flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm leading-relaxed ${
+                  msg.role === 'user'
+                    ? 'bg-cc-blue/15 border border-cc-blue/20 text-cc-text'
+                    : avatarMode
+                      ? 'avatar-message rounded-xl px-4 py-3'
+                      : 'bg-cc-bg border border-cc-border text-cc-text'
+                }`}>
+                  {avatarMode && msg.role === 'assistant' && (
+                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-cc-violet/20">
+                      <div className="w-5 h-5 rounded-full bg-cc-violet/30 flex items-center justify-center">
+                        <span className="text-[10px]">CC</span>
+                      </div>
+                      <span className="text-[11px] font-mono text-cc-violet">Cerveau Cible</span>
+                    </div>
+                  )}
+                  <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(msg.content)}
+                    className="mt-2 text-cc-text3 hover:text-cc-text2 transition-colors"
+                    title="Copier">
+                    <Icons.Copy />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-cc-bg border border-cc-border rounded-xl px-4 py-3">
+                  <div className="flex gap-1.5">
+                    <div className="typing-dot w-2 h-2 rounded-full bg-cc-text3"></div>
+                    <div className="typing-dot w-2 h-2 rounded-full bg-cc-text3"></div>
+                    <div className="typing-dot w-2 h-2 rounded-full bg-cc-text3"></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="mx-auto max-w-lg bg-cc-red/10 border border-cc-red/20 rounded-lg px-4 py-3 text-sm text-cc-red">
+                {error}
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Suggestions */}
+          {suggestions && messages.length === 0 && (
+            <div className="px-4 pb-2 flex flex-wrap gap-2">
+              {suggestions.map((s, i) => (
+                <button key={i}
+                  onClick={() => handleSend(s)}
+                  className="text-xs px-3 py-1.5 rounded-full border border-cc-border text-cc-text2 hover:border-cc-blue/40 hover:text-cc-text transition-all">
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Input area */}
+          <div className="border-t border-cc-border p-4">
+            <div className="flex gap-3 items-end">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={placeholder || "Écrivez votre message..."}
+                rows={2}
+                className="flex-1 bg-cc-bg border border-cc-border rounded-xl px-4 py-3 text-sm text-cc-text resize-none focus:border-cc-blue focus:ring-1 focus:ring-cc-blue/20 outline-none"
+              />
+              <button
+                onClick={() => handleSend()}
+                disabled={isLoading || !input.trim()}
+                className="p-3 rounded-xl bg-cc-blue text-white hover:bg-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                style={{ boxShadow: input.trim() ? '0 0 15px rgba(59,130,246,0.2)' : 'none' }}>
+                <Icons.Send />
+              </button>
+            </div>
+            <div className="flex justify-end mt-2">
+              <button onClick={handleClearChat} className="text-[11px] text-cc-text3 hover:text-cc-red transition-colors">
+                Effacer la conversation
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // COMPONENT: DataPanel (right sidebar for collected data)
+    // ============================================
+    function DataPanel({ title, children }) {
+      return (
+        <div className="border-l border-cc-border h-full overflow-y-auto" style={{ width: '380px', background: 'var(--bg-secondary)' }}>
+          <div className="p-5">
+            <h3 className="font-heading font-bold text-sm text-cc-text2 uppercase tracking-wider mb-4">{title}</h3>
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // PAGE: Dashboard
+    // ============================================
+    function Dashboard({ profiles, onOpenProfile, onNewProfile }) {
+      return (
+        <div className="p-8 animate-fade-in">
+          <div className="mb-8">
+            <h1 className="font-heading text-3xl font-bold text-cc-text mb-2">Dashboard</h1>
+            <p className="text-cc-text2 text-sm">Vue d'ensemble de vos Cerveaux Cibles</p>
+          </div>
+
+          {profiles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-cc-violet/10 flex items-center justify-center mb-4">
+                <Icons.Brain />
+              </div>
+              <h2 className="font-heading text-xl font-bold text-cc-text mb-2">Aucun Cerveau Cible</h2>
+              <p className="text-cc-text2 text-sm mb-6 max-w-md">
+                Créez votre premier Cerveau Cible pour commencer à faire de l'ingénierie de contexte marketing.
+              </p>
+              <button onClick={onNewProfile} className="btn btn-violet btn-lg">
+                <Icons.Plus /> Créer un Cerveau Cible
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {profiles.map((p, i) => (
+                <div key={p.id}
+                  onClick={() => onOpenProfile(p.id)}
+                  className={`card card-cc cursor-pointer glow-violet animate-fade-in stagger-${Math.min(i + 1, 5)}`}
+                  style={{ opacity: 0 }}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="font-heading font-bold text-base text-cc-text">{p.name || 'Sans nom'}</h3>
+                      <p className="text-cc-text3 text-xs mt-1">{p.niche || 'Niche non définie'}</p>
+                    </div>
+                    <span className={`badge ${
+                      p.status === 'active' ? 'badge-active' :
+                      p.status === 'ready' ? 'badge-ready' : 'badge-building'
+                    }`}>
+                      {p.status === 'active' ? 'Actif' : p.status === 'ready' ? 'Prêt' : 'En construction'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-[11px] font-mono text-cc-text3 mt-4">
+                    <span>{formatDate(p.createdAt)}</span>
+                    <span>{p.sourcesCount || 0} sources</span>
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <span className="text-cc-blue text-xs flex items-center gap-1 hover:text-blue-400 transition-colors">
+                      Ouvrir <Icons.ChevronRight />
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ============================================
+    // PAGE: Settings
+    // ============================================
+    function SettingsPage() {
+      const [apiKey, setApiKey] = useState('');
+      const [model, setModel] = useState('claude-sonnet-4-20250514');
+      const [saved, setSaved] = useState(false);
+
+      useEffect(() => {
+        (async () => {
+          const key = await storage.getApiKey();
+          const mdl = await storage.getModel();
+          if (key) setApiKey(key);
+          if (mdl) setModel(mdl);
+        })();
+      }, []);
+
+      async function handleSave() {
+        await storage.saveApiKey(apiKey);
+        await storage.saveModel(model);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
+
+      return (
+        <div className="p-8 max-w-xl animate-fade-in">
+          <h1 className="font-heading text-3xl font-bold text-cc-text mb-2">Settings</h1>
+          <p className="text-cc-text2 text-sm mb-8">Configuration de l'API et des préférences</p>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-cc-text2 mb-2">Clé API Anthropic</label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="sk-ant-..."
+                className="font-mono text-sm"
+              />
+              <p className="mt-1.5 text-[11px] text-cc-text3">
+                Votre clé est stockée localement et utilisée uniquement pour les appels API directs.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-cc-text2 mb-2">Modèle par défaut</label>
+              <select
+                value={model}
+                onChange={e => setModel(e.target.value)}
+                className="text-sm">
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (claude-sonnet-4-20250514)</option>
+                <option value="claude-opus-4-20250514">Claude Opus 4 (claude-opus-4-20250514)</option>
+                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (claude-haiku-4-5-20251001)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button onClick={handleSave} className="btn btn-primary">
+                Sauvegarder
+              </button>
+              {saved && (
+                <span className="text-cc-green text-sm animate-fade-in">Sauvegardé</span>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // PROFILE TABS
+    // ============================================
+
+    // Tab 1: Brief
+    function BriefTab({ profile, onUpdate }) {
+      const [brief, setBrief] = useState(profile.brief || {});
+
+      function updateField(field, value) {
+        const updated = { ...brief, [field]: value };
+        setBrief(updated);
+        onUpdate({ ...profile, brief: updated });
+      }
+
+      const fields = [
+        { key: 'phrase', label: 'Phrase de brief', type: 'textarea', placeholder: 'Décrivez le projet en une phrase...' },
+        { key: 'clientName', label: 'Nom du client', placeholder: 'Ex: Jean Dupont' },
+        { key: 'niche', label: 'Niche', placeholder: 'Ex: Coaching développement personnel' },
+        { key: 'offre', label: 'Offre', placeholder: 'Ex: Programme 12 semaines transformation' },
+        { key: 'prix', label: 'Prix', placeholder: 'Ex: 2000€' },
+        { key: 'format', label: 'Format', placeholder: 'Ex: Coaching 1:1 + groupe' },
+        { key: 'experience', label: 'Années d\'expérience', placeholder: 'Ex: 8 ans' },
+        { key: 'targetName', label: 'Cible — Qui', placeholder: 'Ex: Femmes cadres en burnout' },
+        { key: 'targetAge', label: 'Cible — Âge moyen', placeholder: 'Ex: 38' },
+        { key: 'targetCountry', label: 'Cible — Pays', placeholder: 'Ex: France' },
+        { key: 'targetSituation', label: 'Cible — Situation', placeholder: 'Ex: Cadre supérieure, mère, épuisée' },
+        { key: 'funnel', label: 'Format du funnel', placeholder: 'Ex: VSL → Call → Coaching' },
+        { key: 'insight', label: 'Insight fondamental', type: 'textarea', placeholder: 'L\'insight clé sur lequel repose votre approche...' },
+        { key: 'competitors', label: 'Concurrents connus', type: 'textarea', placeholder: 'Listez les concurrents principaux...' },
+      ];
+
+      return (
+        <div className="p-6 max-w-3xl animate-fade-in">
+          <h2 className="font-heading text-xl font-bold text-cc-text mb-1">Brief du Cerveau Cible</h2>
+          <p className="text-cc-text2 text-sm mb-6">Remplissez les informations de base pour guider la recherche.</p>
+
+          <div className="space-y-4">
+            {fields.map(f => (
+              <div key={f.key}>
+                <label className="block text-sm font-medium text-cc-text2 mb-1.5">{f.label}</label>
+                {f.type === 'textarea' ? (
+                  <textarea
+                    value={brief[f.key] || ''}
+                    onChange={e => updateField(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                    rows={3}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={brief[f.key] || ''}
+                    onChange={e => updateField(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8">
+            <button
+              onClick={() => onUpdate({ ...profile, brief, status: 'building' }, 'research')}
+              className="btn btn-primary btn-lg">
+              Lancer la recherche
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Tab 2: Research
+    function ResearchTab({ profile, onUpdate }) {
+      const briefContext = profile.brief
+        ? `\n\nVoici le brief du client :\n${Object.entries(profile.brief).filter(([_,v]) => v).map(([k,v]) => `- ${k}: ${v}`).join('\n')}`
+        : '';
+
+      const [collectedData, setCollectedData] = useState(profile.research || '');
+
+      function handleDataExtracted(text) {
+        const updated = collectedData + '\n\n---\n\n' + text;
+        setCollectedData(updated);
+        storage.saveResearch(profile.id, updated);
+        onUpdate({ ...profile, research: updated });
+      }
+
+      return (
+        <div className="flex h-full">
+          <div className="flex-1 flex flex-col">
+            <Chat
+              profileId={profile.id}
+              chatType="research"
+              systemPrompt={CHERCHEUR_PROMPT + briefContext}
+              useWebSearch={true}
+              placeholder="Posez des questions au chercheur ou guidez la recherche..."
+              onDataExtracted={handleDataExtracted}
+            />
+          </div>
+
+          <DataPanel title="Données collectées">
+            {!collectedData ? (
+              <p className="text-cc-text3 text-sm">Les données apparaîtront ici au fur et à mesure de la recherche.</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="text-sm text-cc-text2 whitespace-pre-wrap break-words">{collectedData.slice(0, 3000)}</div>
+                {collectedData.length > 3000 && (
+                  <p className="text-cc-text3 text-xs">... ({Math.round(collectedData.length / 1000)}k caractères au total)</p>
+                )}
+              </div>
+            )}
+
+            <div className="mt-6">
+              <button
+                onClick={() => onUpdate({ ...profile, status: 'building' }, 'neuro')}
+                className="btn btn-violet w-full">
+                Valider la recherche → Construire le profil
+              </button>
+            </div>
+          </DataPanel>
+        </div>
+      );
+    }
+
+    // Tab 3: Neuro-Profil
+    function NeuroTab({ profile, onUpdate }) {
+      const researchContext = profile.research
+        ? `\n\nVoici les données de recherche collectées :\n${profile.research}`
+        : '';
+
+      const briefContext = profile.brief
+        ? `\n\nBrief :\n${Object.entries(profile.brief).filter(([_,v]) => v).map(([k,v]) => `- ${k}: ${v}`).join('\n')}`
+        : '';
+
+      const [neuroData, setNeuroData] = useState(profile.neuroProfile || '');
+      const [corrections, setCorrections] = useState(profile.corrections || '');
+
+      function handleDataExtracted(text) {
+        const updated = neuroData + '\n\n' + text;
+        setNeuroData(updated);
+        storage.saveNeuroProfil(profile.id, updated);
+        onUpdate({ ...profile, neuroProfile: updated });
+      }
+
+      async function handleInjectCorrections() {
+        onUpdate({ ...profile, corrections });
+      }
+
+      return (
+        <div className="flex h-full">
+          <div className="flex-1 flex flex-col">
+            <Chat
+              profileId={profile.id}
+              chatType="build"
+              systemPrompt={CONSTRUCTEUR_PROMPT + briefContext + researchContext}
+              placeholder="Guidez la construction du neuro-profil..."
+              onDataExtracted={handleDataExtracted}
+            />
+          </div>
+
+          <DataPanel title="Neuro-Profil">
+            {!neuroData ? (
+              <p className="text-cc-text3 text-sm">Le profil se construira ici au fur et à mesure.</p>
+            ) : (
+              <div className="text-sm text-cc-text2 whitespace-pre-wrap break-words mb-6">
+                {neuroData.slice(0, 3000)}
+                {neuroData.length > 3000 && (
+                  <p className="text-cc-text3 text-xs mt-2">... ({Math.round(neuroData.length / 1000)}k caractères)</p>
+                )}
+              </div>
+            )}
+
+            <div className="border-t border-cc-border pt-4 mt-4">
+              <h4 className="text-sm font-medium text-cc-text2 mb-2">Corrections terrain</h4>
+              <textarea
+                value={corrections}
+                onChange={e => setCorrections(e.target.value)}
+                placeholder="Collez ici les corrections du client terrain..."
+                rows={4}
+                className="text-sm mb-3"
+              />
+              <button onClick={handleInjectCorrections} className="btn btn-secondary btn-sm w-full mb-3">
+                Réinjecter les corrections
+              </button>
+
+              <button
+                onClick={() => onUpdate({ ...profile, status: 'ready' }, 'conversation')}
+                className="btn btn-violet w-full">
+                Profil prêt → Activer le Cerveau Cible
+              </button>
+            </div>
+          </DataPanel>
+        </div>
+      );
+    }
+
+    // Tab 4: Conversation (HEART OF THE PRODUCT)
+    function ConversationTab({ profile }) {
+      const context = buildContext(profile);
+      const systemPrompt = getCerveauCiblePrompt(profile) + '\n\nTES DONNÉES :\n' + context;
+
+      const targetName = profile.brief?.targetName || 'Cerveau Cible';
+      const targetAge = profile.brief?.targetAge || '';
+      const targetSituation = profile.brief?.targetSituation || '';
+
+      const suggestions = [
+        "Ce hook te parle ?",
+        "Pourquoi tu achèterais pas ?",
+        "C'est quoi ton plus gros blocage ?",
+        "Cette promesse est crédible pour toi ?",
+        "Ce texte est congruent avec ce que tu vis ?"
+      ];
+
+      return (
+        <div className="flex flex-col h-full">
+          {/* Avatar header */}
+          <div className="border-b border-cc-border px-6 py-4 flex items-center gap-4 bg-cc-bg2/50">
+            <div className="w-10 h-10 rounded-full bg-cc-violet/20 border border-cc-violet/30 flex items-center justify-center">
+              <Icons.Brain />
+            </div>
+            <div>
+              <h3 className="font-heading font-bold text-cc-text">{targetName}</h3>
+              <p className="text-xs text-cc-text3">
+                {targetAge && `${targetAge} ans`}{targetSituation && ` — ${targetSituation}`}
+              </p>
+            </div>
+            <div className="ml-auto">
+              <span className="badge badge-active status-active">En ligne</span>
+            </div>
+          </div>
+
+          <Chat
+            profileId={profile.id}
+            chatType="chat"
+            systemPrompt={systemPrompt}
+            placeholder="Parlez au Cerveau Cible... (collez un texte marketing pour tester sa congruence)"
+            suggestions={suggestions}
+            avatarMode={true}
+          />
+        </div>
+      );
+    }
+
+    // Tab 5: Production
+    function ProductionTab({ profile, onUpdate }) {
+      const context = buildContext(profile);
+      const systemPrompt = PRODUCTEUR_PROMPT + '\n\nCONTEXTE COMPLET DU CERVEAU CIBLE :\n' + context;
+
+      const [deliverables, setDeliverables] = useState([]);
+      const [selectedDeliverable, setSelectedDeliverable] = useState(null);
+
+      function handleDataExtracted(text) {
+        const newDel = {
+          id: generateId(),
+          content: text,
+          timestamp: Date.now(),
+          title: text.slice(0, 60).replace(/\n/g, ' ') + '...'
+        };
+        setDeliverables(prev => [...prev, newDel]);
+      }
+
+      return (
+        <div className="flex h-full">
+          <div className="flex-1 flex flex-col">
+            <Chat
+              profileId={profile.id}
+              chatType="produce"
+              systemPrompt={systemPrompt}
+              placeholder="Ex: Écris-moi 6 scripts ads 45 secondes, ou: Écris la VSL..."
+              onDataExtracted={handleDataExtracted}
+            />
+          </div>
+
+          <DataPanel title="Livrables produits">
+            {deliverables.length === 0 ? (
+              <p className="text-cc-text3 text-sm">Les livrables apparaîtront ici.</p>
+            ) : (
+              <div className="space-y-2">
+                {deliverables.map((d, i) => (
+                  <div key={d.id}
+                    onClick={() => setSelectedDeliverable(selectedDeliverable === d.id ? null : d.id)}
+                    className="card cursor-pointer text-sm hover:border-cc-blue/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-cc-text2 truncate flex-1">Livrable {i + 1}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(d.content); }}
+                        className="text-cc-text3 hover:text-cc-blue transition-colors ml-2">
+                        <Icons.Copy />
+                      </button>
+                    </div>
+                    {selectedDeliverable === d.id && (
+                      <div className="mt-3 pt-3 border-t border-cc-border text-cc-text2 whitespace-pre-wrap text-xs max-h-60 overflow-y-auto">
+                        {d.content}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </DataPanel>
+        </div>
+      );
+    }
+
+    // Tab 6: Unfair Advantage
+    function UATab({ profile, onUpdate }) {
+      const context = buildContext(profile);
+      const systemPrompt = UA_PROMPT + '\n\nCONTEXTE DU CERVEAU CIBLE :\n' + context;
+
+      const [uaData, setUaData] = useState(profile.ua || '');
+
+      function handleDataExtracted(text) {
+        const updated = uaData + '\n\n' + text;
+        setUaData(updated);
+        storage.saveUA(profile.id, updated);
+        onUpdate({ ...profile, ua: updated });
+      }
+
+      return (
+        <div className="flex h-full">
+          <div className="flex-1 flex flex-col">
+            <Chat
+              profileId={profile.id}
+              chatType="ua"
+              systemPrompt={systemPrompt}
+              placeholder="Demandez à construire l'Unfair Advantage..."
+              onDataExtracted={handleDataExtracted}
+            />
+          </div>
+
+          <DataPanel title="Unfair Advantage">
+            {!uaData ? (
+              <p className="text-cc-text3 text-sm">L'UA sera construit ici.</p>
+            ) : (
+              <div className="text-sm text-cc-text2 whitespace-pre-wrap break-words">
+                {uaData.slice(0, 3000)}
+                {uaData.length > 3000 && (
+                  <p className="text-cc-text3 text-xs mt-2">... ({Math.round(uaData.length / 1000)}k caractères)</p>
+                )}
+              </div>
+            )}
+          </DataPanel>
+        </div>
+      );
+    }
+
+    // ============================================
+    // PAGE: Profile (with tabs)
+    // ============================================
+    function ProfilePage({ profile, onUpdate, initialTab }) {
+      const [activeTab, setActiveTab] = useState(initialTab || 'brief');
+
+      useEffect(() => {
+        if (initialTab) setActiveTab(initialTab);
+      }, [initialTab]);
+
+      const tabs = [
+        { id: 'brief', label: 'Brief' },
+        { id: 'research', label: 'Recherche' },
+        { id: 'neuro', label: 'Neuro-Profil' },
+        { id: 'conversation', label: 'Conversation' },
+        { id: 'production', label: 'Production' },
+        { id: 'ua', label: 'Unfair Advantage' },
+      ];
+
+      function handleUpdate(updatedProfile, switchToTab) {
+        onUpdate(updatedProfile);
+        if (switchToTab) setActiveTab(switchToTab);
+      }
+
+      return (
+        <div className="flex flex-col h-full">
+          {/* Profile header */}
+          <div className="border-b border-cc-border px-6 pt-5 pb-0 bg-cc-bg2/30">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-cc-violet/20 flex items-center justify-center">
+                <Icons.Brain />
+              </div>
+              <div>
+                <h2 className="font-heading font-bold text-lg text-cc-text">
+                  {profile.name || profile.brief?.targetName || 'Nouveau profil'}
+                </h2>
+                <p className="text-xs text-cc-text3">{profile.niche || profile.brief?.niche || ''}</p>
+              </div>
+              <div className="ml-auto">
+                <span className={`badge ${
+                  profile.status === 'active' ? 'badge-active' :
+                  profile.status === 'ready' ? 'badge-ready' : 'badge-building'
+                }`}>
+                  {profile.status === 'active' ? 'Actif' : profile.status === 'ready' ? 'Prêt' : 'En construction'}
+                </span>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="tab-bar">
+              {tabs.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  className={`tab ${activeTab === t.id ? 'active' : ''}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tab content */}
+          <div className="flex-1 overflow-hidden">
+            {activeTab === 'brief' && <BriefTab profile={profile} onUpdate={handleUpdate} />}
+            {activeTab === 'research' && <ResearchTab profile={profile} onUpdate={handleUpdate} />}
+            {activeTab === 'neuro' && <NeuroTab profile={profile} onUpdate={handleUpdate} />}
+            {activeTab === 'conversation' && <ConversationTab profile={profile} />}
+            {activeTab === 'production' && <ProductionTab profile={profile} onUpdate={handleUpdate} />}
+            {activeTab === 'ua' && <UATab profile={profile} onUpdate={handleUpdate} />}
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // MAIN APP
+    // ============================================
+    function App() {
+      const [view, setView] = useState('dashboard');
+      const [profiles, setProfiles] = useState([]);
+      const [currentProfileId, setCurrentProfileId] = useState(null);
+      const [profileTab, setProfileTab] = useState(null);
+      const [loaded, setLoaded] = useState(false);
+
+      useEffect(() => {
+        loadProfiles();
+      }, []);
+
+      async function loadProfiles() {
+        const ids = await storage.getProfileList();
+        const profilesData = [];
+        for (const id of ids) {
+          const p = await storage.getProfile(id);
+          if (p) profilesData.push(p);
+        }
+        setProfiles(profilesData);
+        setLoaded(true);
+
+        // Remove loading screen
+        const loadingEl = document.getElementById('loading-screen');
+        if (loadingEl) {
+          loadingEl.classList.add('fade-out');
+          setTimeout(() => loadingEl.remove(), 300);
+        }
+      }
+
+      function handleNavigate(newView, profileId) {
+        setView(newView);
+        if (profileId) setCurrentProfileId(profileId);
+        setProfileTab(null);
+      }
+
+      async function handleNewProfile() {
+        const id = generateId();
+        const newProfile = {
+          id,
+          name: '',
+          niche: '',
+          status: 'building',
+          createdAt: new Date().toISOString(),
+          sourcesCount: 0,
+          brief: {},
+        };
+        await storage.saveProfile(id, newProfile);
+        const ids = await storage.getProfileList();
+        ids.push(id);
+        await storage.saveProfileList(ids);
+        setProfiles(prev => [...prev, newProfile]);
+        setCurrentProfileId(id);
+        setView('profile');
+      }
+
+      async function handleUpdateProfile(updatedProfile) {
+        // Update name and niche from brief if available
+        if (updatedProfile.brief) {
+          if (updatedProfile.brief.targetName && !updatedProfile.name) {
+            updatedProfile.name = updatedProfile.brief.targetName;
+          }
+          if (updatedProfile.brief.niche && !updatedProfile.niche) {
+            updatedProfile.niche = updatedProfile.brief.niche;
+          }
+          // Always sync niche
+          updatedProfile.niche = updatedProfile.brief.niche || updatedProfile.niche;
+          updatedProfile.name = updatedProfile.brief.targetName || updatedProfile.name;
+        }
+
+        await storage.saveProfile(updatedProfile.id, updatedProfile);
+        setProfiles(prev => prev.map(p => p.id === updatedProfile.id ? updatedProfile : p));
+      }
+
+      const currentProfile = profiles.find(p => p.id === currentProfileId);
+
+      if (!loaded) return null;
+
+      return (
+        <div className="flex h-screen" style={{ background: 'var(--bg-primary)' }}>
+          <Sidebar
+            profiles={profiles}
+            currentView={view}
+            currentProfileId={currentProfileId}
+            onNavigate={handleNavigate}
+            onNewProfile={handleNewProfile}
+          />
+
+          <main className="flex-1 overflow-hidden" style={{ marginLeft: 'var(--sidebar-width, 260px)' }}>
+            {view === 'dashboard' && (
+              <Dashboard
+                profiles={profiles}
+                onOpenProfile={(id) => handleNavigate('profile', id)}
+                onNewProfile={handleNewProfile}
+              />
+            )}
+            {view === 'settings' && <SettingsPage />}
+            {view === 'profile' && currentProfile && (
+              <ProfilePage
+                profile={currentProfile}
+                onUpdate={handleUpdateProfile}
+                initialTab={profileTab}
+              />
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // ============================================
+    // RENDER
+    // ============================================
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
