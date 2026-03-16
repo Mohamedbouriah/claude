@@ -129,6 +129,15 @@
     .tag { display: inline-flex; align-items: center; padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); }
     .spinner { width: 20px; height: 20px; border: 2px solid var(--border-color); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+    .chat-message-enter { animation: fadeIn 0.2s ease-out; }
+    @keyframes typingBounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
+    .typing-dot { animation: typingBounce 1.4s ease-in-out infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    .avatar-message { background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(124, 58, 237, 0.2); color: var(--text-primary); }
+    .status-active { box-shadow: 0 0 8px rgba(16, 185, 129, 0.3); }
   </style>
 
   <!-- Polyfill window.storage using localStorage -->
@@ -1136,7 +1145,7 @@ Tout basé sur les données empiriques. Pas d'invention.`;
       const context = buildContext(profile);
       const systemPrompt = PRODUCTEUR_PROMPT + '\n\nCONTEXTE COMPLET DU CERVEAU CIBLE :\n' + context;
 
-      const [deliverables, setDeliverables] = useState([]);
+      const [deliverables, setDeliverables] = useState(profile.deliverables || []);
       const [selectedDeliverable, setSelectedDeliverable] = useState(null);
 
       function handleDataExtracted(text) {
@@ -1146,7 +1155,9 @@ Tout basé sur les données empiriques. Pas d'invention.`;
           timestamp: Date.now(),
           title: text.slice(0, 60).replace(/\n/g, ' ') + '...'
         };
-        setDeliverables(prev => [...prev, newDel]);
+        const updated = [...deliverables, newDel];
+        setDeliverables(updated);
+        onUpdate({ ...profile, deliverables: updated });
       }
 
       return (
@@ -1296,7 +1307,7 @@ Tout basé sur les données empiriques. Pas d'invention.`;
           </div>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
             {activeTab === 'brief' && <BriefTab profile={profile} onUpdate={handleUpdate} />}
             {activeTab === 'research' && <ResearchTab profile={profile} onUpdate={handleUpdate} />}
             {activeTab === 'neuro' && <NeuroTab profile={profile} onUpdate={handleUpdate} />}
