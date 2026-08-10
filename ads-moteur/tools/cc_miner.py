@@ -135,8 +135,36 @@ def norm(s: str) -> str:
     return f" {s.strip()} "
 
 
+_RE_CACHE: dict[str, re.Pattern] = {}
+
+
+def _marker_re(marker: str) -> re.Pattern:
+    """
+    Marqueur compilé avec frontières de mots.
+
+    BUG CORRIGÉ (vu en inspectant une vraie sortie) : le matching en simple
+    sous-chaîne produisait des signaux FANTÔMES — « vide » matchait dans
+    « évidemment », « peur » dans « peureux », « craque » dans « craquelé ».
+    Un verbatim se retrouvait crédité de deux marqueurs de douleur absents,
+    ce qui gonfle le score et fait passer le GATE à tort.
+
+    Les frontières \\b tiennent compte de l'apostrophe : « j'ose pas » est
+    encadré correctement une fois les accents retirés.
+    """
+    if marker not in _RE_CACHE:
+        # On échappe CHAQUE MOT séparément puis on les rejoint par \s+.
+        # Piège : re.escape() échappe l'espace (« a b » -> « a\ b »), donc
+        # remplacer les espaces après coup laisse un backslash parasite et le
+        # motif ne matche plus jamais. Constaté : tous les marqueurs composés
+        # (« je m'en veux », « j'y arrive plus ») étaient morts silencieusement.
+        mots = strip_accents(marker.lower()).split()
+        corps = r"\s+".join(re.escape(w) for w in mots)
+        _RE_CACHE[marker] = re.compile(rf"(?<![\w']){corps}(?![\w'])")
+    return _RE_CACHE[marker]
+
+
 def count_hits(text_n: str, lexicon: list[str]) -> tuple[int, list[str]]:
-    hits = [m for m in lexicon if strip_accents(m.lower()) in text_n]
+    hits = [m for m in lexicon if _marker_re(m).search(text_n)]
     return len(hits), hits
 
 

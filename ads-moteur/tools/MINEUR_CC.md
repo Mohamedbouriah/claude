@@ -87,7 +87,34 @@ stylistiques — un signal n'est jamais transposable hors de sa condition d'orig
 obligatoire · lexique COMMERCIAL · pénalité question · filtre `author_is_uploader` ·
 déduplication par texte normalisé.
 
-**Après correctif, sur le même corpus : 0 candidat 1B.** C'est le bon résultat — le
+### v3 — deux bugs de matching trouvés en INSPECTANT la sortie
+
+La v2 triait bien, mais l'inspection ligne à ligne d'une vraie récolte a montré
+deux défauts que les compteurs ne révélaient pas :
+
+1. **Signaux fantômes.** Le matching se faisait en simple sous-chaîne : « vide »
+   matchait dans « évidemment », « peur » dans « peureux », « craque » dans
+   « craquelé ». Un verbatim était crédité de marqueurs de douleur absents du
+   texte, ce qui gonflait le score et faisait franchir le GATE à tort.
+2. **Marqueurs composés morts en silence.** Premier correctif trop rapide :
+   `re.escape()` échappe l'espace (« a b » → `a\ b`), donc remplacer les espaces
+   ensuite laissait un backslash parasite. `je m'en veux` devenait « backslash
+   littéral suivi de s » — motif qui ne matche jamais. **Tous** les marqueurs
+   multi-mots étaient désactivés sans le moindre message. Le tri est passé de
+   7 candidats à 1, et c'était une régression, pas une amélioration.
+
+Correctif final : chaque mot échappé séparément, rejoint par `\s+`, avec des
+frontières `(?<![\w'])…(?![\w'])` qui tiennent compte de l'apostrophe.
+Vérifié dans les deux sens — les 3 fantômes éliminés, les marqueurs composés
+restaurés.
+
+**Leçon transférable** : un compteur qui monte n'est pas une preuve que le tri
+marche. Les deux bugs étaient invisibles dans les totaux (« 7 candidats » puis
+« 1 candidat » sont deux nombres également plausibles) et n'ont été trouvés
+qu'en lisant les verbatims et leurs signaux un par un. C'est le même geste que
+l'audit phrase par phrase de `LOIS_COPY` §9.
+
+**Après correctif v2, sur le corpus tuto/business : 0 candidat 1B.** C'est le bon résultat — le
 rapport affiche alors « ⛔ SEUIL NON ATTEINT » et **interdit d'écrire des ads**. Un
 mineur qui rend 0 sur un mauvais corpus vaut mieux qu'un mineur qui rend 18 déchets.
 
