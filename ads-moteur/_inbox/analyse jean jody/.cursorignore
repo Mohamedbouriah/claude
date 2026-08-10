@@ -1,0 +1,14 @@
+# Dépendances
+node_modules/
+.venv/
+__pycache__/
+
+# Systèmes
+.DS_Store
+.git/
+
+# Temporaires
+temp/
+scratch/
+*.backup
+
