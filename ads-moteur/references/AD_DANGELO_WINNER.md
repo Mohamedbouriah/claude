@@ -150,7 +150,7 @@ Tu sauras où t'en es, et quoi faire ensuite.
 | Curseur | Réglage | Vérification sur cette ad |
 |---|---|---|
 | **Ciblage Meta** | 🔓 LARGE | aucun ciblage d'intérêt — la créa fait le ciblage |
-| **État nommé** | 🔒 ÉTROIT | « plus tu donnais, moins elle en demandait » : seul un homme de la population A se reconnaît |
+| **État nommé** | 🔒 ÉTROIT | « plus tu donnais, moins elle en demandait » vise l'attribution de la population A. **[INFÉRÉ]** — aucun taux de reconnaissance n'a été mesuré ; 13/45 compte les hommes qui attribuent la rupture à un excès (Q9), **pas** ceux qui se reconnaîtraient dans cette phrase |
 | **Offre** | ⛔ ABSENTE | aucun prix, aucun nom de programme, aucune promesse chiffrée |
 
 **La population B (11/45, « tromperie ») ne se reconnaîtra pas** dans cette ad — et c'est

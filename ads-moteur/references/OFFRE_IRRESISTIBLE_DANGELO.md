@@ -99,8 +99,13 @@ pour personne. Et c'est exactement ce que dit son objection n°1 :
 
 > *« Peur que ça ne marche pas dans MON cas »* — **6/45, première objection du compte.**
 
-**[OBSERVÉ]** L'objection n°1 et le manque inédit sont la même chose. Ce n'est pas une
-coïncidence : **l'objection est le manque, exprimé en négatif.**
+**[HYPOTHÈSE — 1 cas]** L'objection n°1 et le manque inédit **coïncident ici**. La
+formulation tentante — *« l'objection est le manque exprimé en négatif, trouve l'une tu as
+l'autre »* — est **un compte, une niche, 6 réponses sur 45**. Élégant, non vérifié.
+
+⚠️ Présenté comme un raccourci acquis, ça deviendrait un axiome appliqué à Sabine et à
+Lambert sans avoir jamais été retesté. **À confronter sur un deuxième compte avant d'y
+toucher.**
 
 → Le manque inédit n'est pas d'être conseillé. **C'est d'être lu.**
 

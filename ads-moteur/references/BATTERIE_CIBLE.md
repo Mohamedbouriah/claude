@@ -94,6 +94,59 @@ question directe — une question directe produit du 1A.
 > classé. « Je refresh le bon coin à 7h » est une tâche. « Des voitures dans lesquelles je
 > crois qu'à moitié » est un état.
 
+### 🔒 LE DOUBLE CONTRÔLE — deux conditions nécessaires, aucune suffisante
+
+Un élément de couche 3 ne devient un hook exploitable que s'il passe **les deux**.
+
+**Contrôle 1 — DISCRIMINATION.** *« Qui, dans la niche, ne dirait PAS ça ? »*
+Si la réponse est « personne », l'élément n'exclut rien et attire tout le monde.
+Preuve : `Créa 8 — Négociant épuisé` — **tous** les patrons se reconnaissent dans
+l'épuisement → **CTR 6,92 %, 0 lead** sur 4 931 impressions.
+
+**Contrôle 2 — ÉTAT D'ACHAT.** *« Celui qui dit ça est-il en train d'acheter, ou juste
+en train de hocher la tête ? »*
+Preuve : `AD 1 — NOMINATION DU PATTERN` est **étroit et discriminant** — il nomme un
+pattern précis, il passe le contrôle 1 — et il sort à **56,93 €** (4 leads, CTR 5,10 %).
+**La spécificité seule ne qualifie pas.**
+
+> ⚠️ **Erreur à ne pas refaire.** Une première version de ce contrôle posait
+> « une phrase où toute la niche se reconnaît ne qualifie personne » comme une loi.
+> Elle ne testait qu'un sens : le trop-large échoue. Elle n'établissait jamais que
+> l'étroit réussit — et `NOMINATION DU PATTERN` prouve qu'il peut échouer autant.
+> **Le prédicteur n'est pas la spécificité. C'est l'état d'achat.**
+
+### Comment lire l'état d'achat — marqueurs d'épuisement (Loi 7 du DECODEUR)
+
+> *« Un prospect dont la règle C2 a atteint l'épuisement total peut basculer en compulsion
+> même à prix élevé. Le frein ne s'efface pas parce qu'il a été désarmé, mais parce que le
+> coût de continuer à porter est devenu supérieur au coût d'acheter. »*
+> → **Ces prospects se closent le jour même, pas après réflexion.**
+
+| Marqueur | Exemple |
+|---|---|
+| Phrase courte d'épuisement | « je sais plus quoi faire » · « comment faire pour du vrai » |
+| Récit auto-flagellant **lucide** | il décrit son propre mécanisme sans se défendre |
+| Coût du portage énoncé | « ça devient un réflexe de survie » · « je me fais chier pour en perdre » |
+
+**La reconnaissance obtient l'attention. L'épuisement obtient l'achat.** Un hook qui
+nomme un état sans toucher l'épuisement produit des gens qui hochent la tête et scrollent.
+
+### Comment poser les questions pour obtenir du 1B en direct
+
+Une question directe produit du 1A — mesuré : **moins de 2 % de Phase 1B sur 2 742
+personnes** dans un corpus de formulaire, parce que la question était « décris ta
+situation ». **Passer par des épisodes concrets, jamais par des abstractions.**
+
+| ❌ Abstrait → 1A | ✅ Épisode → 1B |
+|---|---|
+| « Comment tu te sens ? » | « Raconte-moi **la dernière fois** où ça t'a repris. » |
+| « Quel est ton problème ? » | « À quel moment t'as su que ça allait pas s'arranger tout seul ? » |
+| « Qu'est-ce que tu ressens ? » | « Qu'est-ce que tu **ne dirais pas** à un confrère ? » |
+| « Qu'est-ce que tu veux ? » | « Qu'est-ce que t'as **arrêté d'espérer** ? » |
+| « Qu'as-tu essayé ? » | « Qu'est-ce qu'on t'a conseillé qui t'a fait le plus de mal ? » |
+
+La dernière donne directement l'échec à réattribuer (Emboîteur, condition ③).
+
 ---
 
 ## COUCHE 4 — L'INCONSCIENT : LA STRUCTURE D'ATTRIBUTION *(le cœur)*
@@ -136,6 +189,25 @@ Il ne sait pas qu'il tient cette structure. Elle ne se demande pas — elle se *
 | 5.5 | À quel **témoin** doit-il ressembler ? | Objections | Casting des témoignages |
 | 5.6 | Quel est le **coût perçu du changement** (pas du statu quo) ? | Verbatims d'hésitation | **Souvent sous-estimé — c'est là que ça bloque** |
 | 5.7 | Locus de contrôle : **interne ou externe pur** ? | Phrases causales (couche 4) | ⛔ **Externe pur = non-acheteur. Disqualifier.** |
+
+### 🎙️ LES 5 QUESTIONS AU CLOSER — la seule source pour 5.2, 5.3, 5.4
+
+Aucun formulaire ne remplira ces cases. **Un appel de trente minutes avec le closer + les
+enregistrements suffisent** — c'est de la collecte à coût quasi nul, et c'est ce qui
+manque le plus souvent.
+
+1. **Dans quel ordre réel les objections tombent-elles ?** *(pas l'ordre supposé)*
+2. **Combien y en a-t-il avant la bascule ?** → longueur du script
+3. **Quelle phrase fait basculer ?** ← la plus précieuse : c'est la **phrase de
+   soulagement** (case 3.5), celle qu'il attendait sans savoir la formuler
+4. **Que disent ceux qui n'achètent PAS ?** → le motif réel, qui arbitre le test T2
+5. **Qu'est-ce qui les fait se braquer ?** → la liste noire (case 2.5)
+
+⚠️ **Attention au biais de complaisance** : une question posée en onboarding **par le
+vendeur lui-même** produit des réponses arrangeantes. Exemple mesuré : 13 acheteurs sur 45
+déclarent n'avoir eu *aucune* hésitation avant un ticket à quatre chiffres. Deux lectures
+possibles — complaisance, ou achat réellement impulsif (Loi 7, épuisement). **Seul
+l'enregistrement tranche.** Préférer toujours la piste closer au déclaratif d'onboarding.
 
 ---
 
