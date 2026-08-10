@@ -35,6 +35,12 @@ Le même axe tient sur les deux autres niches :
 | Parentalité (Sabine) | « T'as peur de le perdre, **tu contrôles** » — mécanisme qui explique | **10 leads / 16,77 €** | « Tu cries sur ton ado **et tu t'en veux** » — redit sa culpabilité | **0 lead** |
 | Négociant (Lambert) | « C'est **pas toi** le problème… ton **modèle** te fait payer avant de gagner » | **2,83 €** | « T'as monté une boîte **qui vaut zéro** sans toi » | **180,82 €** |
 
+> ⚠️ **Correction apportée après contrôle** — la ligne Lambert ci-dessus est **confondue** :
+> les ads qui innocentent sont en lead form, celles qui accusent en website, et le format
+> seul produit déjà 12× d'écart. À format constant, l'axe vaut **4,9×**, pas 17×.
+> La ligne D'Angelo, elle, est en **organique** — aucun confondant possible — et reste la
+> preuve propre de l'axe. Détail du test : `CARTOGRAPHIE_ET_CONVERGENCES.md` §0.
+
 Trois niches, trois plateformes, même axe, même verdict. **[OBSERVÉ]**
 
 C'est le plus fort résultat de tout ton corpus — plus fort que le hook, que le format,
