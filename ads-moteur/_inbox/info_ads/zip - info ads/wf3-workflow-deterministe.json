@@ -1,0 +1,270 @@
+{
+  "name": "WF3 — Bulletins de paie (pdftotext -layout + parseur déterministe)",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "postProcessAction": "nothing",
+        "downloadAttachments": true,
+        "format": "resolved",
+        "options": {
+          "customEmailConfig": "[\"ALL\", [\"FROM\", \"comptapilote\"], [\"SINCE\", \"18-Jun-2026\"], [\"BEFORE\", \"08-Jul-2026\"]]"
+        }
+      },
+      "id": "imap",
+      "name": "IMAP — direction@ (Comptapilote)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ],
+      "notes": "Remettre [\"UNSEEN\"] apres les rattrapages."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// Preparation des PDF a traiter.\n//\n// FILTRE : on ne garde QUE les fichiers nommes \"Bulletin_YYYYMM...\". Marie\n// joint regulierement d'autres PDF au meme mail (memos, declarations\n// d'accident du travail). Ceux-la sont souvent des scans sans couche texte :\n// pdftotext renvoie exitCode 0 et stdout vide, ce qui casse la suite.\n//\n// On ne CHOISIT PAS un seul bulletin : Marie envoie tantot le lot complet du\n// mois (15 bulletins), tantot un ajustement d'un seul salarie. Garder \"le plus\n// recent\" ferait perdre 14 lignes quand l'ajustement arrive apres le lot.\n// On traite TOUS les lots, du PLUS ANCIEN au PLUS RECENT : l'upsert Airtable\n// (Matricule + Mois) fait le tri, l'ajustement ne reecrit que sa ligne.\n// ---------------------------------------------------------------------------\nconst vus = new Set();\nconst sorties = [];\n\nfor (const item of items) {\n  const dateMail = new Date(item.json.date || item.json.receivedDate || 0).getTime();\n\n  for (const bin of Object.values(item.binary || {})) {\n    const nom = bin.fileName || '';\n    if (!/\\.pdf$/i.test(nom)) continue;\n\n    // Seuls les bulletins de paie nous interessent.\n    const mm = nom.match(/Bulletin_(\\d{4})(\\d{2})/i);\n    if (!mm) continue;\n\n    const empreinte = `${nom}|${bin.fileSize || ''}`;\n    if (vus.has(empreinte)) continue;        // meme fichier deja pris\n    vus.add(empreinte);\n\n    sorties.push({\n      _tri: dateMail,\n      json: {\n        _nomFichier: nom,\n        _moisFichier: `${mm[1]}-${mm[2]}`,\n        _dateMail: item.json.date || null,\n        _chemin: `/tmp/bul_${Math.random().toString(36).slice(2, 10)}.pdf`,\n      },\n      binary: { data: bin },\n    });\n  }\n}\n\nif (sorties.length === 0) return [];\n\n// Ordre chronologique : le plus recent passe en dernier et gagne a l'upsert.\nsorties.sort((a, b) => a._tri - b._tri);\nreturn sorties.map(({ json, binary }) => ({ json, binary }));"
+      },
+      "id": "select",
+      "name": "Préparer les PDF (tous, du + ancien au + récent)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        0
+      ],
+      "notes": "Traite TOUS les PDF. L'upsert Matricule+Mois gere les ajustements."
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $json._chemin }}",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "write",
+      "name": "Écrire le PDF sur disque",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -190,
+        0
+      ],
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "command": "=pdftotext -layout '{{ $json._chemin }}' - ; rm -f '{{ $json._chemin }}'"
+      },
+      "id": "pdftotext",
+      "name": "pdftotext -layout",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        20,
+        0
+      ],
+      "notes": "Necessite poppler-utils. NE PAS activer Execute Once : chaque PDF doit passer.",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n//  WF3 — node \"Parse déterministe bulletins\"   (remplace Extrait PDF + Sonnet)\n//  Entrée  : sortie du node \"Extract From File\" (operation = Extract From PDF)\n//            -> chaque item porte $json.text  (texte brut du PDF)\n//  Sortie  : un item par bulletin, prêt pour l'Upsert Airtable\n//            + _valide / _motif : les items invalides partent en fallback LLM\n//\n//  ZÉRO appel LLM. Format ACD/Comptapilote, stable et vérifié sur 44 bulletins\n//  (déc 2025, jan 2026, mars 2026).\n// ============================================================================\nconst num = s => s == null ? null\n  : parseFloat(String(s).replace(/\\s|\\u00A0/g, '').replace(',', '.'));\nconst r2 = n => Math.round(n * 100) / 100;\n\n// --- 1. Decoupage en bulletins ---------------------------------------------\nfunction decouper(texte) {\n  const t = texte.replace(/\\u00A0/g, ' ');\n  const RE_ENTETE = /Employ[ée]{1,2}\\s*N°\\s*(\\d+)/i;   // couvre Employé ET Employée\n\n  // Voie normale : un saut de page par bulletin.\n  let blocs = t.split('\\f').filter(p => p.trim());\n  // Si le PDF n'a pas de saut de page, on retombe sur l'en-tete.\n  if (blocs.length < 2) {\n    blocs = t.split(/(?=Employ[ée]{1,2}\\s*N°\\s*\\d+)/i).filter(p => RE_ENTETE.test(p));\n  }\n  // Une page sans en-tete est une page 2 (cadres) : on la recolle a la precedente.\n  const out = [];\n  for (const b of blocs) {\n    if (RE_ENTETE.test(b)) out.push(b);\n    else if (out.length) out[out.length - 1] += '\\n' + b;\n  }\n  return out;\n}\n\n// --- 2. Bloc bas : payees / travaillees / sup ------------------------------\n// Les libelles sont groupes, les valeurs arrivent apres le pied de page.\nfunction blocBas(b) {\n  const lignes = b.split('\\n');\n  const i = lignes.findIndex(l => /H\\.\\s*Pay[ée]es/i.test(l));\n  if (i === -1) return {};\n\n  // CAS 1 — texte AVEC layout (pdftotext -layout) : la valeur est sur la meme\n  // ligne que le libelle.   \"H. Payées        154,00     1 903,97\"\n  //                          ^libelle          ^bulletin  ^annee\n  const surLigne = l => {\n    const m = String(l).match(/H\\.\\s*(?:Pay[ée]es|Travaill[ée]es)\\s+(-?[\\d\\s]*\\d,\\d{2})/i);\n    return m ? num(m[1]) : null;\n  };\n  const hpL = surLigne(lignes[i]);\n  if (hpL != null) {\n    const jTr = lignes.findIndex((l, k) => k > i && /H\\.\\s*Travaill[ée]es/i.test(l));\n    const htL = jTr !== -1 ? surLigne(lignes[jTr]) : null;\n    if (htL != null) return { heures_payees: hpL, heures_travaillees: htL };\n  }\n\n  // CAS 2 — texte SANS layout (pdf-parse / Extract From File) : les libelles\n  // sont groupes, les valeurs arrivent plus bas apres le pied de page.\n  const vals = [];\n  for (let k = i + 1; k < lignes.length && vals.length < 3; k++) {\n    const m = lignes[k].trim().match(/^(\\d[\\d\\s]*,\\d{2})$/);\n    if (m) vals.push(num(m[1]));\n  }\n  return { heures_payees: vals[0] ?? null, heures_travaillees: vals[1] ?? null };\n}\n\n// --- Alignement libelles / valeurs du bloc \"Designation\" -------------------\nfunction blocDesignation(b) {\n  const L = b.split('\\n').map(l => l.trim());\n  const iDes = L.findIndex(l => /^D[ée]signation$/i.test(l));\n  const iCot = L.findIndex((l, k) => k > iDes && /Cotisations et contributions/i.test(l));\n  if (iDes === -1 || iCot === -1) return [];\n\n  // libelles : jusqu'a \"Total Brut\" exclu (cette ligne n'a pas de valeur Base)\n  const libelles = [];\n  for (let k = iDes + 1; k < iCot; k++) {\n    const l = L[k];\n    if (!l) continue;\n    if (/^Total\\s+Brut$/i.test(l)) break;\n    libelles.push(l);\n  }\n  // valeurs : premier bloc de nombres apres \"Montant\"\n  const iMontant = L.findIndex((l, k) => k > iCot && /^Montant$/i.test(l));\n  if (iMontant === -1) return [];\n  const valeurs = [];\n  for (let k = iMontant + 1; k < L.length; k++) {\n    const l = L[k];\n    if (!l) continue;\n    const m = l.match(/^(-?[\\d\\s]*\\d,\\d{2})$/);\n    if (m) valeurs.push(num(m[1]));\n    else break;                       // fin du bloc Base\n  }\n  return libelles.map((libelle, i) => ({ libelle, base: valeurs[i] ?? null }));\n}\n\n// --- 3. Un bulletin --------------------------------------------------------\nfunction parseBulletin(b, moisAttendu) {\n  const g = (re, i = 1) => { const m = b.match(re); return m ? m[i] : null; };\n\n  const matricule = g(/Employ[ée]{1,2}\\s*N°\\s*(\\d+)/i);\n  const periode   = g(/(\\d{2}\\/\\d{2}\\/\\d{4})\\s+au\\s+\\d{2}\\/\\d{2}\\/\\d{4}/);\n  const mois      = periode ? periode.slice(6, 10) + '-' + periode.slice(3, 5) : moisAttendu;\n\n  const { heures_payees: hp, heures_travaillees: ht } = blocBas(b);\n\n  // Bloc \"Designation\" : libelles et valeurs alignes par index.\n  const design = blocDesignation(b);\n  const trouve = re => design.find(d => re.test(d.libelle))?.base ?? null;\n\n  // Base contractuelle = valeur en regard de \"Salaire de base\".\n  // Un cadre au forfait (\"Salaire de base Mensuel\") n'a pas de base horaire.\n  let heures_contrat = null;\n  if (!/Salaire\\s+de\\s+base\\s+Mensuel/i.test(b)) {\n    const lg = b.split('\\n').find(l => /Salaire\\s+de\\s+base/i.test(l));\n    const m  = lg && lg.match(/\\s{3,}(\\d{1,3},\\d{2})(?=\\s|$)/);\n    heures_contrat = m ? num(m[1]) : trouve(/^Salaire\\s+de\\s+base/i);\n  }\n  if (heures_contrat != null && (heures_contrat < 10 || heures_contrat > 200)) heures_contrat = null;\n\n  // Heures majorees : alignement libelle <-> valeur de la colonne Base.\n  // Le texte sans layout groupe les libelles puis les valeurs, dans le MEME\n  // ordre. On aligne par index, en s'arretant a \"Total Brut\" (pas de base).\n  // Heures majorees.\n  // CAS 1 — texte AVEC layout : la valeur \"Base\" est sur la meme ligne.\n  //   \" Heures supp. de 36 a 39eme Exonerees      3,90      15,2250      59,38\"\n  //                                               ^base     ^taux        ^montant\n  // ATTENTION : ignorer \"Montant net des heures compl/suppl exonerees\", qui est\n  // une ligne de RECAPITULATIF en euros, pas un volume horaire.\n  let heures_sup = 0;\n  let supTrouveSurLigne = false;\n  for (const ligne of b.split('\\n')) {\n    if (/Montant\\s+net\\s+des\\s+heures/i.test(ligne)) continue;\n    if (!/Heures\\s+(supp?\\.|Compl\\.)/i.test(ligne)) continue;\n    // Le libelle contient lui-meme des chiffres (\"de 36 a 39eme\") : on ne peut\n    // pas prendre \"le premier nombre\". La colonne Base est le premier nombre\n    // ISOLE par une large gouttiere d'espaces, et a exactement 2 decimales\n    // (le taux en a 4 : 15,2250).\n    const m = ligne.match(/\\s{3,}(\\d{1,3},\\d{2})(?=\\s|$)/);\n    if (m) { heures_sup = r2(heures_sup + num(m[1])); supTrouveSurLigne = true; }\n  }\n  // CAS 2 — texte SANS layout : alignement libelle/valeur par index.\n  if (!supTrouveSurLigne) {\n    for (const d of design) {\n      if (/Heures\\s+(supp?\\.|Compl\\.)/i.test(d.libelle) && d.base != null) heures_sup = r2(heures_sup + d.base);\n    }\n  }\n\n  // Conges : lignes datees, filtrees sur le mois du bulletin\n  let conges_jours = 0; const detailCP = [];\n  for (const m of b.matchAll(/(\\d+)\\s+Jrs?\\s+C\\.P\\.\\s+du\\s+(\\d{2})\\/(\\d{2})\\/(\\d{2})/gi)) {\n    const [, j, , mm, aa] = m;\n    if (mois && `20${aa}-${mm}` !== mois) continue;      // hors periode -> ignore\n    conges_jours += parseInt(j, 10);\n    detailCP.push(`${j}j ${m[2]}/${mm}/${aa}`);\n  }\n\n  // Absences : en heures si possible, sinon reconstituees par difference\n  let heures_absence = 0, absEnJours = null;\n  const absH = g(/Heures\\s+d'absence[^\\n]*?(\\d{1,3},\\d{2})/i);\n  if (absH) heures_absence = num(absH);\n  else if (/Jours?\\s+d'absence/i.test(b)) {\n    absEnJours = num(g(/Jours?\\s+d'absence[^\\n]*?(\\d{1,3},\\d{2})/i));\n    if (hp != null && ht != null) heures_absence = r2(Math.max(hp - ht, 0));\n  }\n\n  const salaire_brut  = num(g(/Total\\s+Brut[^\\d\\-]*(-?[\\d\\s]+,\\d{2})/i));\n  const cout_employeur= num(g(/Total\\s+vers[ée]\\s+par\\s+l'employeur[^\\d\\-]*(-?[\\d\\s]+,\\d{2})/i));\n  const net_a_payer   = num(g(/NET\\s+A\\s+PAYER\\s+AU\\s+SALARI[EÉ][^\\d\\-]*(-?[\\d\\s]+,\\d{2})/i));\n\n  // Conges en heures = ce qui reste apres travaillees et absences\n  const conges_heures = (hp != null && ht != null)\n    ? r2(Math.max(hp - ht - heures_absence, 0)) : null;\n\n  // --- Validation comptable : payees = travaillees + absences + conges -----\n  let valide = false, motif = null;\n  if (hp == null || ht == null) motif = 'bloc bas illisible';\n  else if (ht > hp + 0.5)       motif = `travaillées ${ht} > payées ${hp}`;\n  else if (heures_contrat != null && heures_sup > 0\n           && Math.abs(hp - (heures_contrat + heures_sup)) > 0.5)\n    // Le bloc \"Designation\" aligne libelles et valeurs par index. Un libelle\n    // sans valeur Base decale l'alignement -> heures_sup faux. L'equation\n    // payees = contrat + sup le detecte (cas JERAK janvier 2026 : 7 lu au lieu\n    // de 2,36). La ligne part en verification plutot qu'en base.\n    motif = `contrat ${heures_contrat} + sup ${heures_sup} = ${r2(heures_contrat + heures_sup)} != payées ${hp}`;\n  else valide = true;\n\n  return {\n    matricule,\n    // Civilites reelles du PDF : \"M. Prenom NOM\" pour les hommes,\n    // \"MME PRENOM NOM\" (sans point, en majuscules) pour les femmes.\n    // En mode -layout, la colonne voisine (\"CONVENTION COLLECTIVE\") se retrouve\n    // sur la meme ligne, separee par une large gouttiere : on coupe dessus.\n    employe: (g(/\\b(?:MME|Mme|M\\.)\\s+(.{2,60})/) || '').split(/\\s{2,}/)[0].trim(),\n    mois, periode,\n    heures_contrat, heures_payees: hp, heures_travaillees: ht,\n    heures_sup, heures_absence, conges_heures,\n    conges_jours_brut: conges_jours,\n    salaire_brut, cout_employeur, net_a_payer,\n    arret_maladie: /Maladie\\s+du\\s+\\d{2}\\/\\d{2}/i.test(b) || absEnJours != null,\n    _valide: valide, _motif: motif,\n    _detail: [detailCP.length ? 'CP ' + detailCP.join(' + ') : null,\n              absEnJours ? `absence ${absEnJours} j ouvrés convertie` : null\n             ].filter(Boolean).join(' | ') || null,\n  };\n}\n\nfunction parsePDF(texte, moisAttendu) {\n  const bruts = decouper(texte).map(b => parseBulletin(b, moisAttendu));\n  // Un cadre peut avoir 2 pages : on garde la version la plus complete.\n  const parMat = new Map();\n  for (const x of bruts) {\n    const cle = `${x.matricule}|${x.mois}`;\n    const prec = parMat.get(cle);\n    if (!prec) { parMat.set(cle, x); continue; }\n    const score = o => Object.values(o).filter(v => v !== null && v !== 0 && v !== '').length;\n    if (score(x) > score(prec)) parMat.set(cle, x);\n  }\n  return [...parMat.values()];\n}\n\n\n// ---------------------------------------------------------------- n8n ------\n// Le champ Airtable \"Service\" est un singleSelect : les seules valeurs\n// acceptees sont Bar / Cuisine / Direction / Support. Toute autre valeur fait\n// echouer l'upsert (erreur \"Invalid input for 'Service'\").\n// Mapping releve sur les fiches de juin 2026.\nconst SERVICE_MAP = {\n  '9':'Direction', '29':'Direction', '33':'Direction', '114':'Direction',\n  '110':'Bar', '113':'Bar', '121':'Bar', '127':'Bar', '128':'Bar', '131':'Bar',\n  '115':'Cuisine', '125':'Cuisine', '130':'Cuisine', '133':'Cuisine',\n  '129':'Support', '132':'Support', '134':'Support',\n};\n\nconst out = [];\nfor (const item of items) {\n  // Execute Command -> stdout ; Extract From File -> text (compat)\n  const texte = item.json.stdout || item.json.text || item.json.data || '';\n  if (!texte) continue;\n\n  // Mois imposé depuis le nom du fichier (Bulletin_YYYYMM_GANAY.pdf) si présent :\n  // plus fiable que la date de l'e-mail, qui peut être un renvoi.\n  const nomFichier = item.json._nomFichier || item.json.fileName || '';\n  const mf = nomFichier.match(/Bulletin_(\\d{4})(\\d{2})/);\n  const moisAttendu = mf ? `${mf[1]}-${mf[2]}` : null;\n\n  for (const b of parsePDF(texte, moisAttendu)) {\n    if (!b.matricule) continue;\n    out.push({ json: {\n      ...b,\n      service: SERVICE_MAP[b.matricule] || 'Support',   // defaut sur une option valide\n      cle_paie: `${b.matricule}_${b.mois}`,\n      statut: b._valide ? 'OK' : 'Vérification requise',\n      notes: [b._detail, b._valide ? null : `ALERTE ${b._motif}`].filter(Boolean).join(' | ') || null,\n      _source: 'parser-deterministe',\n      _nomFichier: nomFichier,\n    }});\n  }\n}\nreturn out;\n"
+      },
+      "id": "parse",
+      "name": "Parse déterministe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json._valide }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "iff",
+      "name": "Extraction fiable ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appRJSYOPa4XYvbzv",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblbgrPeJ268gtoTG",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Matricule": "={{ $json.matricule }}",
+            "Mois": "={{ $json.mois }}",
+            "Employé": "={{ $json.employe }}",
+            "Service": "={{ $json.service }}",
+            "Heures Contrats": "={{ $json.heures_contrat }}",
+            "Heures payées": "={{ $json.heures_payees }}",
+            "Heures travaillées": "={{ $json.heures_travaillees }}",
+            "Heures sup": "={{ $json.heures_sup }}",
+            "Heures absences (maladie)": "={{ $json.heures_absence }}",
+            "Congés pris (heures)": "={{ $json.conges_heures }}",
+            "Congés jours (brut)": "={{ $json.conges_jours_brut }}",
+            "Salaire brut": "={{ $json.salaire_brut }}",
+            "Coût employeur": "={{ $json.cout_employeur }}",
+            "Net à payer": "={{ $json.net_a_payer }}",
+            "Statut": "={{ $json.statut }}",
+            "Notes": "={{ $json.notes }}"
+          },
+          "matchingColumns": [
+            "Matricule",
+            "Mois"
+          ],
+          "schema": []
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "id": "airtable",
+      "name": "Airtable — Upsert Masse Salariale",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        740,
+        -110
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Bulletins rejetes par la validation comptable : ils N'ENTRENT PAS en base.\n// Le motif exact est affiche ci-dessous. Corriger a la main dans Airtable,\n// ou brancher ici un appel Sonnet en fallback.\nreturn items.map(i => ({ json: {\n  matricule: i.json.matricule, mois: i.json.mois, employe: i.json.employe,\n  motif: i.json._motif,\n  payees: i.json.heures_payees, travaillees: i.json.heures_travaillees,\n  contrat: i.json.heures_contrat, sup: i.json.heures_sup,\n  fichier: i.json._nomFichier,\n}}));"
+      },
+      "id": "fallback",
+      "name": "À vérifier (non écrit en base)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        110
+      ]
+    }
+  ],
+  "connections": {
+    "IMAP — direction@ (Comptapilote)": {
+      "main": [
+        [
+          {
+            "node": "Préparer les PDF (tous, du + ancien au + récent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Écrire le PDF sur disque": {
+      "main": [
+        [
+          {
+            "node": "pdftotext -layout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "pdftotext -layout": {
+      "main": [
+        [
+          {
+            "node": "Parse déterministe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse déterministe": {
+      "main": [
+        [
+          {
+            "node": "Extraction fiable ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraction fiable ?": {
+      "main": [
+        [
+          {
+            "node": "Airtable — Upsert Masse Salariale",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "À vérifier (non écrit en base)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Préparer les PDF (tous, du + ancien au + récent)": {
+      "main": [
+        [
+          {
+            "node": "Écrire le PDF sur disque",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
