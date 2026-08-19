@@ -1,0 +1,26 @@
+[
+  {
+    "cle": "vsl",
+    "type": "video",
+    "url": "https://exemple.com/videos/vsl.mp4",
+    "legende": "Regarde ca tranquillement, 12 min, tu comprendras exactement comment on bosse.",
+    "description": "La video de vente principale (VSL) qui explique la methode et les resultats clients.",
+    "quand": "le prospect demande comment ca marche, ou veut comprendre l'offre avant de parler"
+  },
+  {
+    "cle": "temoignages",
+    "type": "video",
+    "url": "https://exemple.com/videos/temoignages.mp4",
+    "legende": "Trois clients qui racontent ce que ca a change chez eux.",
+    "description": "Compilation de temoignages clients avec chiffres.",
+    "quand": "le prospect doute des resultats, demande des preuves ou des references"
+  },
+  {
+    "cle": "etude_de_cas",
+    "type": "document",
+    "url": "https://exemple.com/docs/etude-de-cas.pdf",
+    "legende": "L'etude de cas complete, chiffres a l'appui.",
+    "description": "PDF d'une etude de cas detaillee avant/apres.",
+    "quand": "le prospect est analytique et veut du concret ecrit"
+  }
+]

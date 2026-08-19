@@ -1,0 +1,14 @@
+{
+  "name": "closer-ia-whatsapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Setter/closer IA sur WhatsApp : conversations automatisees, envoi de videos, supervision et reprise en main en temps reel.",
+  "engines": { "node": ">=22.5.0" },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "demo": "WHATSAPP_CHANNEL=mock node server/index.js",
+    "simulate": "node scripts/simulate.js"
+  }
+}

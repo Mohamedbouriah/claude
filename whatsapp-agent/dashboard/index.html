@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Closer IA — Console WhatsApp</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>💬</text></svg>">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header id="barre">
+  <div class="marque"><span class="pastille"></span> Closer IA</div>
+  <div id="stats" class="stats"></div>
+  <div id="etat-flux" class="etat hors">hors ligne</div>
+</header>
+
+<main id="app">
+  <!-- Colonne 1 : liste -->
+  <section id="liste">
+    <div class="liste-tete">
+      <input id="recherche" type="search" placeholder="Rechercher un prospect…" autocomplete="off">
+      <div class="filtres">
+        <button class="filtre actif" data-filtre="toutes">Toutes</button>
+        <button class="filtre" data-filtre="non_lus">Non lus</button>
+        <button class="filtre" data-filtre="humain">À reprendre</button>
+        <button class="filtre" data-filtre="rdv">RDV</button>
+      </div>
+    </div>
+    <div id="conversations"></div>
+  </section>
+
+  <!-- Colonne 2 : fil -->
+  <section id="fil">
+    <div id="fil-vide" class="vide">
+      <p>Sélectionne une conversation.</p>
+      <p class="petit">Ou lance un prospect de test depuis le panneau de droite.</p>
+    </div>
+    <div id="fil-contenu" hidden>
+      <div id="fil-tete">
+        <div>
+          <div id="fil-nom"></div>
+          <div id="fil-sous" class="petit"></div>
+        </div>
+        <div class="fil-actions">
+          <label class="bascule">
+            <input type="checkbox" id="bascule-ia">
+            <span>L'IA répond</span>
+          </label>
+          <button id="btn-repondre" class="secondaire" title="Forcer une réponse de l'IA maintenant">Faire répondre l'IA</button>
+        </div>
+      </div>
+      <div id="messages"></div>
+      <div id="saisie-ia" class="saisie-ia" hidden>l'IA écrit…</div>
+      <form id="composer">
+        <textarea id="champ" rows="1" placeholder="Écrire en tant qu'humain — l'IA se met en pause sur ce fil…"></textarea>
+        <button type="submit">Envoyer</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Colonne 3 : fiche -->
+  <aside id="panneau">
+    <div class="bloc" id="bloc-fiche" hidden>
+      <h3>Fiche prospect</h3>
+      <label>Étape
+        <select id="champ-etape">
+          <option value="nouveau">Nouveau</option>
+          <option value="en_cours">En cours</option>
+          <option value="qualifie">Qualifié</option>
+          <option value="rdv_pris">RDV pris</option>
+          <option value="no_show">No-show</option>
+          <option value="client">Client</option>
+          <option value="perdu">Perdu</option>
+        </select>
+      </label>
+      <label>Score <span id="valeur-score" class="petit"></span>
+        <input type="range" id="champ-score" min="0" max="100" step="5">
+      </label>
+      <label>Note interne
+        <textarea id="champ-note" rows="3" placeholder="Ce qu'il faut savoir avant de reprendre…"></textarea>
+      </label>
+      <div id="qualification"></div>
+    </div>
+
+    <div class="bloc" id="bloc-medias" hidden>
+      <h3>Envoyer un média</h3>
+      <div id="medias"></div>
+    </div>
+
+    <div class="bloc" id="bloc-relances" hidden>
+      <h3>Relances</h3>
+      <div id="relances"></div>
+      <form id="form-relance">
+        <input type="number" id="relance-minutes" value="60" min="1" title="Dans combien de minutes">
+        <input type="text" id="relance-instruction" placeholder="Consigne de relance…">
+        <button type="submit" class="secondaire">Programmer</button>
+      </form>
+    </div>
+
+    <div class="bloc">
+      <h3>Simulateur</h3>
+      <p class="petit">Injecte un message entrant comme s'il venait de WhatsApp.</p>
+      <form id="form-simu">
+        <input type="text" id="simu-numero" value="33600000001" placeholder="Numéro">
+        <input type="text" id="simu-nom" value="Prospect test" placeholder="Nom">
+        <input type="text" id="simu-texte" value="Salut, j'ai vu ta pub, ça marche comment ?" placeholder="Message">
+        <button type="submit" class="secondaire">Envoyer comme prospect</button>
+      </form>
+    </div>
+
+    <div class="bloc" id="bloc-config"></div>
+  </aside>
+</main>
+
+<div id="toasts"></div>
+<script src="/app.js"></script>
+</body>
+</html>
