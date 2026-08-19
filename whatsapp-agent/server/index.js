@@ -6,8 +6,11 @@ import { abonner, nbAbonnes } from './bus.js';
 import { gererWebhook } from './routes/webhook.js';
 import { gererApi } from './routes/api.js';
 import { demarrerPlanificateur } from './scheduler.js';
+import { appliquer as appliquerReglages, miseEnRoute } from './reglages.js';
 import { json, texte, servirStatique } from './http-utils.js';
 import './db.js';
+
+appliquerReglages();  // les reglages de l'interface se superposent au .env
 
 const RACINE_DASHBOARD = resolve(ROOT, 'dashboard');
 
@@ -47,6 +50,11 @@ const serveur = createServer(async (req, res) => {
       return await gererApi(req, res, url);
     }
 
+    // Jolie URL pour la mise en route
+    if (req.method === 'GET' && (url.pathname === '/bienvenue' || url.pathname === '/bienvenue/')) {
+      if (await servirStatique(res, RACINE_DASHBOARD, '/bienvenue.html')) return;
+    }
+
     if (req.method === 'GET' && await servirStatique(res, RACINE_DASHBOARD, url.pathname)) return;
 
     return texte(res, 404, 'Introuvable');
@@ -63,6 +71,8 @@ serveur.listen(config.port, config.host, () => {
   console.log(`  Webhook   : ${config.urlPublique || `http://localhost:${config.port}`}/webhook`);
   console.log(`  Canal     : ${config.canal}${config.canal === 'mock' ? ' (simulateur — aucun message reel envoye)' : ''}`);
   console.log(`  Modele    : ${config.anthropic.modele}${config.anthropic.cle ? '' : '  ⚠ ANTHROPIC_API_KEY absente'}`);
-  console.log(`  Dashboard protege : ${config.dashboard.token ? 'oui' : 'non (DASHBOARD_TOKEN vide)'}\n`);
+  console.log(`  Dashboard protege : ${config.dashboard.token ? 'oui' : 'non (DASHBOARD_TOKEN vide)'}`);
+  const mer = miseEnRoute();
+  console.log(`  Mise en route     : ${mer.faites}/${mer.total} — ${mer.faites < mer.total ? `a completer sur http://localhost:${config.port}/bienvenue` : 'complete'}\n`);
   demarrerPlanificateur();
 });

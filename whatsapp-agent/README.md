@@ -44,9 +44,13 @@ cp .env.example .env          # renseigne au minimum ANTHROPIC_API_KEY
 npm start                     # WHATSAPP_CHANNEL=mock par défaut
 ```
 
-Ouvre http://localhost:3000, puis dans le panneau **Simulateur** (à droite),
-envoie un message comme si tu étais un prospect. L'IA répond dans le fil, en
-direct. Rien n'est envoyé sur WhatsApp en mode `mock`.
+Ouvre http://localhost:3000 — tu atterris sur la console, avec une carte
+**Mise en route** qui te dit ce qu'il reste à régler. Le parcours complet est sur
+http://localhost:3000/bienvenue.
+
+Pour voir l'agent tourner tout de suite : panneau **Simulateur** (à droite de la
+console), envoie un message comme si tu étais un prospect. L'IA répond dans le
+fil, en direct. Rien n'est envoyé sur WhatsApp en mode `mock`.
 
 En ligne de commande :
 
@@ -60,6 +64,28 @@ Pour tester toute la chaîne **sans consommer de crédits API** :
 node scripts/faux-claude.js &                  # faux endpoint Anthropic
 ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://localhost:4010 npm start
 ```
+
+## La mise en route
+
+`/bienvenue` guide le réglage en six volets, avec enregistrement au fil de l'eau
+et un aperçu de conversation qui change en direct à mesure qu'on règle l'agent :
+
+| Volet | Ce qu'on y fait |
+|---|---|
+| Le cerveau | Vérifier que la clé Anthropic répond |
+| Ton offre | Ce que l'agent a le droit de dire — hors de ça, il a interdiction d'inventer |
+| La voix de l'agent | Prénom, tutoiement, deux curseurs (insistance, longueur des messages) |
+| Tes vidéos | La bibliothèque, avec le champ « quand l'envoyer » |
+| Brancher WhatsApp | Simulateur, numéro existant (Coexistence) ou identifiants Cloud API |
+| Parler à ton agent | Un vrai aller-retour avant de le mettre face à des prospects |
+
+Les deux curseurs ne sont pas décoratifs : ils se traduisent en consignes dans le
+prompt système (`consignesDeVoix()` dans `server/agent/prompt.js`), et le volet
+affiche la phrase exacte que le curseur produit.
+
+Ce qui est réglé dans l'interface est stocké dans `data/reglages.json` et se
+superpose au `.env` au démarrage. Les secrets peuvent donc rester dans le `.env`
+en production, sans jamais passer par l'interface.
 
 ## Brancher le vrai WhatsApp (Cloud API officielle)
 
@@ -80,6 +106,18 @@ WA_TOKEN=...
 WA_VERIFY_TOKEN=closerIA
 WA_APP_SECRET=...        # active la vérification de signature des webhooks
 ```
+
+### Deux chemins pour connecter un numéro
+
+- **Embedded Signup** — la fenêtre Meta que tu ouvres depuis ton app : le client
+  se connecte à son Facebook, choisit son numéro, et ton app récupère les
+  identifiants sans qu'il ait à copier un token. C'est le chemin à industrialiser
+  si tu installes l'agent chez plusieurs clients.
+- **Coexistence** — le numéro reste utilisable sur le téléphone du client dans
+  l'app WhatsApp Business, pendant que l'agent répond via l'API. C'est ce qui
+  évite de demander un numéro dédié à un coach qui utilise déjà le sien.
+
+Les deux passent par la même app Meta ; l'onboarding décrit les étapes.
 
 ### Fenêtre de 24 h et templates
 
@@ -102,7 +140,8 @@ Meta et expose le numéro à un bannissement — la Cloud API est le chemin prop
 
 ## Régler l'agent
 
-Trois endroits, dans l'ordre d'importance :
+Le plus simple est de passer par `/bienvenue`. Sinon, trois endroits, dans
+l'ordre d'importance :
 
 1. **`server/agent/persona.md`** — la personnalité, la trame de conversation, les
    objections, ce qu'il ne fait jamais. C'est du markdown, édite-le librement,
@@ -155,6 +194,10 @@ Toutes les routes `/api/*` exigent l'en-tête `x-token` si `DASHBOARD_TOKEN` est
 | `POST` | `/api/conversations/:id/relance` | `{ "dans_minutes": 60, "instruction": "…" }` |
 | `DELETE` | `/api/conversations/:id/relances` | Annule les relances en attente |
 | `GET` | `/api/medias` · `PUT` | Lit / remplace la bibliothèque |
+| `GET` | `/api/reglages` · `PUT` | Réglages de l'interface + état de la mise en route |
+| `GET` | `/api/miseenroute` | Checklist de démarrage (6 étapes) |
+| `GET` | `/api/persona` · `PUT` | Lit / remplace `persona.md` |
+| `POST` | `/api/verifier` | `{ "quoi": "ia" \| "whatsapp" }` — teste la connexion |
 | `POST` | `/api/simuler` | Injecte un message entrant (test) |
 | `GET` | `/api/stream` | Flux SSE : `message`, `conversation`, `ia_reflechit`, `escalade`, `statut`, `erreur` |
 | `GET` | `/webhook` · `POST` | Vérification et réception Meta (hors token dashboard) |

@@ -66,8 +66,8 @@ export const config = {
 
   // Contexte business injecte dans le prompt
   business: {
-    nom: process.env.BUSINESS_NAME || 'Ton offre',
-    prenomAgent: process.env.AGENT_PRENOM || 'Lea',
+    nom: process.env.BUSINESS_NAME || '',
+    prenomAgent: process.env.AGENT_PRENOM || '',
     offre: process.env.BUSINESS_OFFRE || '',
     lienRdv: process.env.BOOKING_URL || '',
   },

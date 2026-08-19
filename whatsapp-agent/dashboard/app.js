@@ -143,6 +143,18 @@ async function chargerEtat() {
   rendreStats(infos.stats, infos);
 }
 
+// Bandeau de mise en route : visible tant que la configuration n'est pas finie.
+async function chargerMiseEnRoute() {
+  const mer = await api('/miseenroute');
+  const bloc = $('#bloc-miseenroute');
+  if (mer.faites >= mer.total) { bloc.hidden = true; return; }
+  bloc.hidden = false;
+  bloc.innerHTML = `<h3>Mise en route — ${mer.faites}/${mer.total}</h3>
+    <div class="mer-barre"><span style="width:${Math.round((mer.faites / mer.total) * 100)}%"></span></div>
+    ${mer.etapes.map((e) => `<div class="mer-ligne ${e.fait ? 'fait' : ''}"><span class="mer-rond">${e.fait ? '✓' : ''}</span>${echapper(e.titre)}</div>`).join('')}
+    <a href="/bienvenue">Reprendre la configuration →</a>`;
+}
+
 async function ouvrir(id) {
   etat.convId = id;
   const { conversation, messages, relances } = await api(`/conversations/${encodeURIComponent(id)}`);
@@ -269,6 +281,7 @@ $('#form-simu').addEventListener('submit', async (e) => {
 (async function demarrer() {
   try {
     await chargerEtat();
+    await chargerMiseEnRoute();
     await chargerListe();
     const { medias } = await api('/medias');
     etat.medias = medias;

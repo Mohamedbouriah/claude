@@ -1,5 +1,5 @@
 // Assemblage du prompt systeme : persona (editable) + contexte business + medias + etat du lead.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import config from '../config.js';
@@ -7,11 +7,40 @@ import { catalogueTexte } from '../media.js';
 
 const ici = dirname(fileURLToPath(import.meta.url));
 
-export function chargerPersona() {
-  const brut = readFileSync(resolve(ici, 'persona.md'), 'utf8');
-  return brut
-    .replaceAll('{{PRENOM}}', config.business.prenomAgent)
-    .replaceAll('{{BUSINESS}}', config.business.nom);
+const cheminPersona = () => resolve(ici, 'persona.md');
+
+// brut : true renvoie le markdown tel quel (pour l'edition dans l'interface).
+export function chargerPersona({ brut = false } = {}) {
+  const texte = readFileSync(cheminPersona(), 'utf8');
+  if (brut) return texte;
+  return texte
+    .replaceAll('{{PRENOM}}', config.business.prenomAgent || 'Lea')
+    .replaceAll('{{BUSINESS}}', config.business.nom || 'notre offre');
+}
+
+export function ecrirePersona(texte) {
+  writeFileSync(cheminPersona(), texte);
+}
+
+// Les curseurs regles pendant la mise en route se traduisent en consignes claires.
+function consignesDeVoix() {
+  const v = config.voix;
+  if (!v) return '';
+  const adresse = v.adresse === 'vous'
+    ? 'Tu vouvoies systematiquement.'
+    : "Tu tutoies par defaut, sauf si la personne vouvoie : dans ce cas tu t'alignes sur elle.";
+  const insistance = [
+    "Tu es tres patient : tu poses une question, tu laisses venir, tu ne pousses jamais vers l'appel avant que la personne en parle d'elle-meme.",
+    "Tu es patient : tu prends le temps du diagnostic avant de proposer l'appel.",
+    "Tu avances : des que le diagnostic est fait, tu proposes l'appel sans tourner autour.",
+    "Tu es direct : tu vas vite au diagnostic, et tu proposes l'appel des que tu as compris la situation.",
+  ][Math.max(0, Math.min(3, v.insistance))];
+  const longueur = [
+    'Tes messages font une ligne, jamais plus.',
+    'Tes messages font une a deux lignes.',
+    'Tes messages font deux a trois lignes maximum.',
+  ][Math.max(0, Math.min(2, v.longueur))];
+  return `\n## Ta voix\n- ${adresse}\n- ${insistance}\n- ${longueur}`;
 }
 
 export function construirePrompt(conv, { contexteRelance = null } = {}) {
@@ -20,6 +49,7 @@ export function construirePrompt(conv, { contexteRelance = null } = {}) {
 
   const blocs = [
     chargerPersona(),
+    consignesDeVoix(),
     `\n## Contexte de l'offre\n${config.business.offre || '(non renseigne — reste general et ne t\'avance sur aucun detail)'}`,
     config.business.lienRdv ? `\nLien de reservation : ${config.business.lienRdv}` : '',
     `\n## Medias disponibles\n${catalogueTexte()}`,

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mise en route — Closer IA</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>💬</text></svg>">
+<link rel="stylesheet" href="/bienvenue.css">
+</head>
+<body>
+
+<aside id="rail">
+  <div class="marque"><span class="pastille"></span> Closer IA</div>
+  <p class="rail-intro">Six choses à régler. Tu peux t'arrêter et reprendre quand tu veux, tout est enregistré au fil de l'eau.</p>
+  <ol id="etapes"></ol>
+  <div class="rail-pied">
+    <div class="barre"><span id="barre-remplie"></span></div>
+    <span id="progres" class="mono"></span>
+    <a href="/" class="lien-console">Aller à la console →</a>
+  </div>
+</aside>
+
+<main id="scene">
+  <section id="volet"></section>
+  <aside id="apercu">
+    <div class="tel">
+      <div class="tel-tete">
+        <span class="avatar" id="apercu-initiale">L</span>
+        <div>
+          <div class="tel-nom" id="apercu-nom">Ton agent</div>
+          <div class="tel-etat">en ligne</div>
+        </div>
+      </div>
+      <div class="tel-corps" id="apercu-fil"></div>
+    </div>
+    <p class="apercu-note">Conversation d'exemple. Elle change à mesure que tu règles ton agent.</p>
+  </aside>
+</main>
+
+<div id="toasts"></div>
+<script src="/bienvenue.js"></script>
+</body>
+</html>

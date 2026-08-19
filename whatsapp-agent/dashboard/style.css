@@ -101,3 +101,13 @@ button.secondaire:hover{color:var(--txt);border-color:var(--bleu)}
 .toast.ok{border-left-color:var(--vert)}
 
 @media (max-width:1100px){#app{grid-template-columns:260px 1fr}#panneau{display:none}}
+
+/* Mise en route */
+#bloc-miseenroute .mer-barre{height:4px;border-radius:999px;background:var(--bg);overflow:hidden;margin:8px 0 12px}
+#bloc-miseenroute .mer-barre span{display:block;height:100%;background:linear-gradient(90deg,var(--cc-violet,#7C3AED),var(--vert,#10B981));transition:width .5s}
+#bloc-miseenroute .mer-ligne{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:4px 0;color:var(--txt2)}
+#bloc-miseenroute .mer-ligne.fait{color:var(--txt3);text-decoration:line-through}
+#bloc-miseenroute .mer-rond{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--bord);flex:none;display:grid;place-items:center;font-size:9px}
+#bloc-miseenroute .mer-ligne.fait .mer-rond{border-color:var(--vert);color:var(--vert)}
+#bloc-miseenroute a{display:inline-block;margin-top:10px;color:var(--bleu);font-size:12.5px;text-decoration:none}
+#bloc-miseenroute a:hover{text-decoration:underline}

@@ -9,6 +9,8 @@ import { envoyerTexte, envoyerAsset, journaliserEvenement } from '../envoi.js';
 import { repondre, annulerReponse } from '../agent/brain.js';
 import { chargerBibliotheque, enregistrerBibliotheque } from '../media.js';
 import { traiterMessageEntrant } from './webhook.js';
+import { lireReglages, ecrireReglages, miseEnRoute } from '../reglages.js';
+import { chargerPersona, ecrirePersona } from '../agent/prompt.js';
 import { json, lireJson } from '../http-utils.js';
 
 const CHAMPS_MODIFIABLES = ['nom', 'etape', 'score', 'note_interne', 'mode'];
@@ -26,6 +28,69 @@ export async function gererApi(req, res, url) {
       business: { nom: config.business.nom, agent: config.business.prenomAgent, lienRdv: config.business.lienRdv },
       stats: statistiques(),
     });
+  }
+
+  // GET /api/miseenroute — l'etat de la checklist de demarrage
+  if (req.method === 'GET' && chemin === '/miseenroute') {
+    return json(res, 200, miseEnRoute());
+  }
+
+  // GET /api/reglages | PUT /api/reglages
+  if (chemin === '/reglages') {
+    if (req.method === 'GET') return json(res, 200, { reglages: lireReglages(), miseEnRoute: miseEnRoute() });
+    if (req.method === 'PUT') {
+      const corps = await lireJson(req);
+      const actuels = lireReglages();
+      const fusion = {
+        ...actuels, ...corps,
+        business: { ...actuels.business, ...(corps.business || {}) },
+        voix: { ...actuels.voix, ...(corps.voix || {}) },
+        wa: { ...actuels.wa, ...(corps.wa || {}) },
+      };
+      ecrireReglages(fusion);
+      return json(res, 200, { reglages: fusion, miseEnRoute: miseEnRoute() });
+    }
+  }
+
+  // GET /api/persona | PUT /api/persona
+  if (chemin === '/persona') {
+    if (req.method === 'GET') return json(res, 200, { persona: chargerPersona({ brut: true }) });
+    if (req.method === 'PUT') {
+      const { persona } = await lireJson(req);
+      if (typeof persona !== 'string' || !persona.trim()) return json(res, 400, { erreur: 'persona requis' });
+      ecrirePersona(persona);
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  // POST /api/verifier — teste une connexion avant de se lancer
+  if (req.method === 'POST' && chemin === '/verifier') {
+    const { quoi } = await lireJson(req);
+    if (quoi === 'ia') {
+      if (!config.anthropic.cle) return json(res, 200, { ok: false, message: 'ANTHROPIC_API_KEY absente du .env' });
+      try {
+        const rep = await fetch(`${config.anthropic.baseUrl}/v1/messages`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-api-key': config.anthropic.cle, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: config.anthropic.modele, max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
+        });
+        if (rep.ok) return json(res, 200, { ok: true, message: `Cerveau joignable (${config.anthropic.modele}).` });
+        const d = await rep.json().catch(() => ({}));
+        return json(res, 200, { ok: false, message: d?.error?.message || `HTTP ${rep.status}` });
+      } catch (e) { return json(res, 200, { ok: false, message: e.message }); }
+    }
+    if (quoi === 'whatsapp') {
+      if (!config.wa.token || !config.wa.phoneNumberId) return json(res, 200, { ok: false, message: 'Identifiants WhatsApp incomplets.' });
+      try {
+        const rep = await fetch(`https://graph.facebook.com/${config.wa.versionApi}/${config.wa.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`, {
+          headers: { Authorization: `Bearer ${config.wa.token}` },
+        });
+        const d = await rep.json().catch(() => ({}));
+        if (rep.ok) return json(res, 200, { ok: true, message: `Connecté : ${d.verified_name || ''} ${d.display_phone_number || ''}`.trim(), numero: d });
+        return json(res, 200, { ok: false, message: d?.error?.message || `HTTP ${rep.status}` });
+      } catch (e) { return json(res, 200, { ok: false, message: e.message }); }
+    }
+    return json(res, 400, { erreur: "quoi doit valoir 'ia' ou 'whatsapp'" });
   }
 
   // GET /api/medias  |  PUT /api/medias
@@ -56,6 +121,8 @@ export async function gererApi(req, res, url) {
       waId, nom, type: 'text', contenu,
       waMessageId: `sim.${Date.now()}`, canalNom: config.canal,
     });
+    const r = lireReglages();
+    if (!r.premierTestFait) ecrireReglages({ ...r, premierTestFait: true });
     return json(res, 200, { conversationId: conv.id });
   }
 
